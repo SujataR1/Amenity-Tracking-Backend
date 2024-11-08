@@ -1,6 +1,7 @@
 from tortoise import fields
 from tortoise.models import Model
 
+
 class User(Model):
     id = fields.UUIDField(pk=True)  # Primary key field
     name = fields.CharField(max_length=100)

@@ -3,6 +3,7 @@ from tortoise.exceptions import DBConnectionError
 from Database_Models import Database_Models
 from decouple import config
 
+
 async def init_db():
     try:
         await Tortoise.init(
@@ -12,6 +13,7 @@ async def init_db():
         await Tortoise.generate_schemas(safe=True)
     except DBConnectionError as e:
         print("Database connection error:", e)
+
 
 async def close_db():
     await Tortoise.close_connections()
