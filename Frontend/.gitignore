@@ -1,0 +1,113 @@
+# Node modules
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependency directories
+jspm_packages/
+.eslintcache
+
+# Temporary directories and files
+tmp/
+temp/
+dist/
+build/
+.cache/
+out/
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*.pid
+*.seed
+*.pid.lock
+
+# Operating system files
+Thumbs.db
+.DS_Store
+
+# Testing files
+coverage/
+*.lcov
+.nyc_output/
+
+# Environment variables
+.env
+.env.test
+.env.production
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Parcel bundler cache
+.cache/
+.parcel-cache/
+
+# Webpack files
+.webpack/
+
+# IDE-specific
+.vscode/
+.idea/
+
+# Svelte/Vite
+.svelte-kit/
+.vite/
+
+# Next.js
+.next/
+out/
+
+# Nuxt.js
+.nuxt/
+dist/
+
+# Gatsby
+.cache/
+public/
+
+# Angular
+.angular/
+dist/
+
+# React Native
+.expo/
+*.expo/*
+ios/Pods/
+android/.cxx/
+android/.gradle/
+android/app/build/
+android/build/
+fastlane/report.xml
+
+# Storybook files
+.storybook-out/
+storybook-static/
+
+# Git conflicts
+*.orig
+
+# Bower
+bower_components/
+
+# Firebase
+.firebaserc
+.firebase/
+firestore.indexes.json
+firestore.rules
+storage.rules
+
+# VSCode workspace settings (optional)
+.vscode/
