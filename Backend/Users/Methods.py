@@ -1,5 +1,5 @@
 from Database_and_ORM.Database_Models import User, Blacklisted_Tokens
-from Backend.Methods import verify_jwt_token
+from JWT_Authentication.Verify_JWT import verify_jwt
 from Users.API_Data_Schemas import UserCreate
 from tortoise.exceptions import IntegrityError
 from passlib.hash import bcrypt
@@ -58,7 +58,7 @@ async def authenticate_user(email: str, password: str):
     token = create_jwt_token(str(user.id))
     return user, token
 
-async def logout_user(token: str, payload=Depends(verify_jwt_token)):
+async def logout_user(token: str, payload=Depends(verify_jwt)):
     """
     Logs out the user by adding the token to the blacklist.
     """
