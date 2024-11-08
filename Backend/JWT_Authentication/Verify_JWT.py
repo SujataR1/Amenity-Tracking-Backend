@@ -17,7 +17,9 @@ async def verify_jwt(authorization: str = Header(None)):
     # Remove "Bearer " prefix and decode the token
     token = authorization.split(" ")[1]
     try:
-        payload = jwt.decode(token, config("JWT_SECRET_STRING"), algorithms=["HS256"])
+        payload = jwt.decode(
+            token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
