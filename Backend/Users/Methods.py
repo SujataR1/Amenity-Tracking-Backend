@@ -37,7 +37,7 @@ def create_jwt_token(user_id: str):
     """
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow() + timedelta(hours=24),  # Token valid for 1 hour
+        "exp": datetime.utcnow() + timedelta(hours=24),  # Token valid for 1 day
     }
     token = jwt.encode(payload, config("JWT_SECRET_STRING"), algorithm="HS256")
     return token
@@ -68,5 +68,5 @@ async def logout_user(token: str, payload=Depends(verify_jwt)):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Already logged out or logout failed",
+            detail="Either you have already logged out, or there's something wrong on our end",
         )
