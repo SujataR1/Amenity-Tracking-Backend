@@ -26,7 +26,7 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
 
     try:
         await user.save()
-        return f"Account for {user.name} created successfully!"
+        return {"message": "Account succesfully created!"}
     except IntegrityError:
         return {"error": "A user with this email already exists."}
 
