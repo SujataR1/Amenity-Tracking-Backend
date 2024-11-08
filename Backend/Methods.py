@@ -42,30 +42,43 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
+
 def add_api_key_middleware(app):
     """
     Adds API key middleware to the FastAPI app.
     """
     app.add_middleware(APIKeyMiddleware)
 
+
 async def verify_jwt_token(authorization: str = Header(None)):
     """
     Dependency that verifies the JWT token and checks if it's blacklisted.
     """
     if authorization is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header missing",
+        )
 
     # Remove "Bearer " prefix and decode the token
     token = authorization.split(" ")[1]
     try:
         payload = jwt.decode(token, config("JWT_SECRET_STRING"), algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Your session has expired, Please login again")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has expired, Please login again",
+        )
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
 
     # Check if the token is blacklisted
     if await Blacklisted_Tokens.get_or_none(token=token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You have already logged out. Please log in again.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="You have already logged out. Please log in again.",
+        )
 
     return payload  # Return the decoded payload if the token is valid

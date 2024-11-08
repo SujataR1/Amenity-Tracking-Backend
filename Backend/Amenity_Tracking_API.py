@@ -10,6 +10,7 @@ app = FastAPI(title="Amenity Tracking API")
 add_api_key_middleware(app)
 add_cors_middleware(app)
 
+
 # Global route
 @app.get("/")
 async def root():

@@ -37,8 +37,7 @@ def create_jwt_token(user_id: str):
     """
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow()
-        + timedelta(hours=24),  # Token valid for 1 hour
+        "exp": datetime.utcnow() + timedelta(hours=24),  # Token valid for 1 hour
     }
     token = jwt.encode(payload, config("JWT_SECRET_STRING"), algorithm="HS256")
     return token
@@ -58,6 +57,7 @@ async def authenticate_user(email: str, password: str):
     token = create_jwt_token(str(user.id))
     return user, token
 
+
 async def logout_user(token: str, payload=Depends(verify_jwt)):
     """
     Logs out the user by adding the token to the blacklist.
@@ -66,5 +66,7 @@ async def logout_user(token: str, payload=Depends(verify_jwt)):
         await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
         return {"message": "Successfully logged out"}
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Logout failed")
-
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Already logged out or logout failed",
+        )
