@@ -7,6 +7,7 @@ class User(Model):
     name = fields.CharField(max_length=100)
     email = fields.CharField(max_length=100, unique=True)
     password = fields.CharField(max_length=128)
+    role = fields.CharField(max_length=10, default="user")
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
 
