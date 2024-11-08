@@ -24,7 +24,9 @@ async def login_user(response: Response, login_data: LoginData):
     Login endpoint that validates user credentials and returns a JWT token in the headers.
     """
     try:
-        user, token = await authenticate_user(login_data.email, login_data.password)
+        user, token = await authenticate_user(
+            login_data.email, login_data.password
+        )
         response.headers["Authorization"] = f"Bearer {token}"
         return {"message": f"User {user.name} has successfully logged in"}
     except HTTPException as e:
