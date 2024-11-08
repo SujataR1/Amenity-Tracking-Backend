@@ -13,3 +13,9 @@ class User(Model):
 
     class Meta:
         table = "User"
+
+class Blacklisted_Tokens(Model):
+    Blacklisted_Tokens = fields.CharField(pk=True, max_length=255)
+
+    class Meta:
+        table = "Blacklisted_Tokens"

@@ -1,4 +1,5 @@
-from Database_and_ORM.Database_Models import User
+from Database_and_ORM.Database_Models import User, Blacklisted_Tokens
+from Backend.Methods import verify_jwt_token
 from Users.API_Data_Schemas import UserCreate
 from tortoise.exceptions import IntegrityError
 from passlib.hash import bcrypt
@@ -6,7 +7,7 @@ from typing import Union
 import jwt
 from datetime import datetime, timedelta
 from decouple import config
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 
 
 async def create_user(user_data: UserCreate) -> Union[User, dict]:
@@ -56,3 +57,14 @@ async def authenticate_user(email: str, password: str):
 
     token = create_jwt_token(str(user.id))
     return user, token
+
+async def logout_user(token: str, payload=Depends(verify_jwt_token)):
+    """
+    Logs out the user by adding the token to the blacklist.
+    """
+    try:
+        await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+        return {"message": "Successfully logged out"}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Logout failed")
+
