@@ -4,6 +4,7 @@ from Database_and_ORM.Methods import init_db, close_db
 from Users.Router import User_Router  # Import the user router
 from decouple import config
 from Methods import add_cors_middleware, add_api_key_middleware
+from contextlib import asynccontextmanager
 
 app = FastAPI(title="Amenity Tracking API")
 
@@ -21,13 +22,13 @@ async def root():
 app.include_router(User_Router, prefix="/users", tags=["Users"])
 
 
-# Initialize the database when the app starts
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run startup code here
     await init_db()
-
-
-# Close the database when the app shuts down
-@app.on_event("shutdown")
-async def shutdown_event():
+    yield
+    # Run shutdown code here
     await close_db()
+
+
+app = FastAPI(lifespan=lifespan)
