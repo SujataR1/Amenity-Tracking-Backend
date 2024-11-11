@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Response, Header
+from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
 from Users.API_Data_Schemas import UserCreate, LoginData, UserUpdate
 from Users.Methods import (
     create_user,
@@ -6,6 +6,7 @@ from Users.Methods import (
     logout_user,
     update_user,
 )
+from JWT_Authentication.Verify_JWT import verify_jwt
 
 User_Router = APIRouter()
 
@@ -46,9 +47,7 @@ async def logout(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=400, detail="Cannot verify user")
 
-    # Extract the token from the "Bearer <token>" format
-    token = authorization.split(" ")[1]
-    response = await logout_user(token)
+    response = await logout_user(authorization)
     return response
 
 
@@ -60,6 +59,11 @@ async def update_user_endpoint(
     Patch endpoint to update user details based on the user ID extracted from JWT.
     """
     changes = await update_user(
-        update_data.dict(exclude_unset=True), authorization
+        update_data.model_dump(exclude_unset=True), authorization
     )
     return changes
+
+@User_Router.get("/verify")
+async def verify_test(payload=Depends(verify_jwt)):
+    return payload
+
