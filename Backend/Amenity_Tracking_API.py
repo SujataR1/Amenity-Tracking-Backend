@@ -7,8 +7,8 @@ from Methods import add_cors_middleware, add_api_key_middleware
 
 app = FastAPI(title="Amenity Tracking API")
 
-add_api_key_middleware(app)
 add_cors_middleware(app)
+add_api_key_middleware(app)
 
 
 # Global route
