@@ -31,7 +31,7 @@ async def verify_jwt(authorization: str = Header(None)):
         )
 
     # Check if the token is blacklisted
-    if await Blacklisted_Tokens.get_or_none(token=token):
+    if await Blacklisted_Tokens.get_or_none(Blacklisted_Tokens=token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="You have already logged out. Please log in again.",
