@@ -8,6 +8,7 @@ import jwt
 from datetime import datetime, timedelta
 from decouple import config
 from fastapi import HTTPException, status, Depends
+from typing import Dict, Optional
 
 
 async def create_user(user_data: UserCreate) -> Union[User, dict]:
@@ -37,7 +38,8 @@ def create_jwt_token(user_id: str):
     """
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow() + timedelta(hours=24),  # Token valid for 1 day
+        "exp": datetime.utcnow()
+        + timedelta(hours=24),  # Token valid for 1 day
     }
     token = jwt.encode(payload, config("JWT_SECRET_STRING"), algorithm="HS256")
     return token
@@ -70,3 +72,43 @@ async def logout_user(token: str, payload=Depends(verify_jwt)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Either you have already logged out, or there's something wrong on our end",
         )
+
+
+async def update_user(
+    update_data: Dict[str, Optional[str]], payload=Depends(verify_jwt)
+):
+    """
+    Updates user details based on user_id from JWT token.
+    Only updates fields that are changed and excludes the 'role' field.
+    """
+    # Extract user_id from payload
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User ID not found in token",
+        )
+
+    # Retrieve the user from the database
+    user = await User.get_or_none(id=user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    changes = {}
+
+    # Iterate through the update data and apply changes
+    for field, new_value in update_data.items():
+        current_value = getattr(user, field)
+        if current_value != new_value:
+            setattr(user, field, new_value)
+            changes[field] = (
+                f"{field} updated from {current_value} to {new_value}"
+            )
+
+    if changes:
+        await user.save()
+        return changes
+    else:
+        return {"message": "Nothing was changed"}
