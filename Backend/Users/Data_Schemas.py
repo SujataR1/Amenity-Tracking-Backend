@@ -25,7 +25,7 @@ class UserCreate(BaseModel):
     pan: str
     occupation: str
     martial_status: MartialStatusEnum
-    annual_income_bar: str
+    annual_income_bar: int
 
 
 class UserUpdate(BaseModel):
@@ -36,7 +36,7 @@ class UserUpdate(BaseModel):
     pan: Optional[str] = None
     occupation: Optional[str] = None
     martial_status: Optional[MartialStatusEnum]
-    annual_income_bar: Optional[str] = None
+    annual_income_bar: Optional[int] = None
 
 
 class LoginData(BaseModel):
