@@ -11,7 +11,7 @@ async def verify_jwt(authorization: str = Header(None)):
     if authorization is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header missing",
+            detail="Please log in",
         )
 
     # Remove "Bearer " prefix and decode the token
