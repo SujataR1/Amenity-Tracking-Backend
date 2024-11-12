@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decouple import config
 from fastapi import HTTPException, status
 from typing import Dict
+from Utilities.Utilities import get_token_from_authorization_header_value
 
 
 async def create_user(user_data: UserCreate) -> Union[User, dict]:
@@ -58,12 +59,13 @@ async def authenticate_user(email: str, password: str):
     return user, token
 
 
-async def logout_user(token: str, payload):
+async def logout_user(authorization: str, payload: dict):
     """
     Logs out the user by adding the token to the blacklist.
     """
     if payload:
         try:
+            token = get_token_from_authorization_header_value(authorization)
             await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
             return {"message": "Successfully logged out"}
         except Exception as e:
@@ -118,3 +120,33 @@ async def update_user(update_data: dict, payload: dict):
 
     else:
         return "Please login to update your data!"
+
+
+async def delete_user(payload: dict, authorization: str):
+    """
+    Deletes a user based on user ID extracted from JWT token and blacklists the token.
+    """
+    # Extract user_id from payload
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please log in first to delete your account",
+        )
+
+    # Find the user and delete
+    user = await User.get_or_none(id=user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    await user.delete()
+
+    # Blacklist the token
+    token = get_token_from_authorization_header_value(
+        authorization
+    )  # Extract the token part from "Bearer <token>"
+    await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+
+    return {"message": "User deleted successfully and token blacklisted"}

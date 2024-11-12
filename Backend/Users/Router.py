@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
-from JWT_Authentication.Verify_JWT import verify_jwt
+from Backend.Utilities.Utilities import verify_jwt
 from Backend.Users.Data_Schemas import UserCreate, LoginData, UserUpdate
 from Users.Methods import (
     create_user,
     authenticate_user,
     logout_user,
     update_user,
+    delete_user,
 )
 
 User_Router = APIRouter()
@@ -64,3 +65,13 @@ async def update_user_endpoint(
         update_data.model_dump(exclude_unset=True), payload
     )
     return changes
+
+
+@User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_endpoint(
+    authorization: str = Header(None), payload=Depends(verify_jwt)
+):
+    """
+    Endpoint to delete a user and blacklist the token.
+    """
+    return await delete_user(authorization, payload)
