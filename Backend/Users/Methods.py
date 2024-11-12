@@ -41,7 +41,7 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
         return {"error": "A user with this email already exists."}
 
 
-async def authenticate_user(email: str, password: str):
+async def authenticate_user(email: str, password: str) -> str:
     """
     Authenticates a user by email and password.
     """
@@ -52,7 +52,7 @@ async def authenticate_user(email: str, password: str):
             detail="Invalid credentials",
         )
 
-    token = create_jwt(str(user.id), expiration_duration=1440)
+    token = await create_jwt(str(user.id), expiration_duration=1440)
     return user, token
 
 
