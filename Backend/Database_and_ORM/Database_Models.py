@@ -9,7 +9,7 @@ class User(Model):
     id = fields.UUIDField(pk=True)  # Primary key field
     name = fields.CharField(max_length=100)
     email = fields.CharField(max_length=100, unique=True)
-    email = email_verified = fields.BooleanField(default=False)
+    email_verified = fields.BooleanField(default=False)
     phone_number = fields.BigIntField
     phone_number_verified = fields.BooleanField(default=False)
     aadhar_card_number = fields.BigIntField(length=12, unique=True)

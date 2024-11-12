@@ -22,13 +22,17 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
     # Hash the password with a salt
     hashed_password = bcrypt.hash(user_data.password)
 
-    # Create user model instance
-   # Convert Pydantic model fields to a dictionary, excluding password
-    user_dict = user_data.dict(exclude={"password"})  # Exclude password if not needed in user_dict
-    user_dict['password'] = hashed_password  # Add the hashed password
-
-    # Create user model instance
-    user = User(**user_dict)
+    user = User(
+        name=user_data.name,
+        email=user_data.email,  # Defaults to False if not passed
+        password=hashed_password,
+        phone_number=user_data.phone_number,  # Defaults to False if not passed
+        aadhar_card_number=user_data.aadhar_card_number,
+        pan=user_data.pan,
+        occupation=user_data.occupation,
+        martial_status=user_data.martial_status,
+        annual_income_bar=user_data.annual_income_bar,
+    )
 
     try:
         await user.save()
