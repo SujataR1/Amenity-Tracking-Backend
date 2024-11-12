@@ -23,10 +23,12 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
     hashed_password = bcrypt.hash(user_data.password)
 
     # Create user model instance
-    user_dict = {
-        field.value: getattr(user_data, field.value) for field in UserCreate
-    }  # Create user model instance
-    user = User(**user_dict, password=hashed_password)
+   # Convert Pydantic model fields to a dictionary, excluding password
+    user_dict = user_data.dict(exclude={"password"})  # Exclude password if not needed in user_dict
+    user_dict['password'] = hashed_password  # Add the hashed password
+
+    # Create user model instance
+    user = User(**user_dict)
 
     try:
         await user.save()
