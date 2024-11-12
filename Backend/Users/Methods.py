@@ -1,5 +1,4 @@
 from Database_and_ORM.Database_Models import User, Blacklisted_Tokens
-from JWT_Authentication.Verify_JWT import verify_jwt
 from Users.API_Data_Schemas import UserCreate
 from tortoise.exceptions import IntegrityError
 from passlib.hash import bcrypt
@@ -9,6 +8,7 @@ from datetime import datetime, timedelta
 from decouple import config
 from fastapi import HTTPException, status, Depends
 from typing import Dict, Optional
+import json
 
 
 async def create_user(user_data: UserCreate) -> Union[User, dict]:
@@ -38,8 +38,7 @@ def create_jwt_token(user_id: str):
     """
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow()
-        + timedelta(hours=24),  # Token valid for 1 day
+        "exp": datetime.now() + timedelta(hours=24),  # Token valid for 1 day
     }
     token = jwt.encode(payload, config("JWT_SECRET_STRING"), algorithm="HS256")
     return token
@@ -60,42 +59,39 @@ async def authenticate_user(email: str, password: str):
     return user, token
 
 
-async def logout_user(token: str, payload=Depends(verify_jwt)):
+async def logout_user(token: str, payload):
     """
     Logs out the user by adding the token to the blacklist.
     """
-    try:
-        await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-        return {"message": "Successfully logged out"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Either you have already logged out, or there's something wrong on our end",
-        )
+    if payload:
+        try:
+            await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+            return {"message": "Successfully logged out"}
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Either you have already logged out, or there's something wrong on our end",
+            )
 
 
-async def update_user(
-    update_data: Dict[str, Optional[str]], 
-    payload=Depends(verify_jwt)
-):
+async def update_user(update_data: dict, payload: dict):
     """
-    Updates user details based on user_id from JWT token.
-    Only updates fields that are changed and excludes the 'role' field.
+    Updates user details based on user_id extracted from JWT token in authorization header.
     """
-    # Extract user_id from the JWT payload
+    # Manually call verify_jwt with the authorization header
     user_id = payload.get("user_id")
+
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User ID not found in token"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Please log in",
         )
 
     # Retrieve the user from the database
     user = await User.get_or_none(id=user_id)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
     changes = {}
@@ -107,7 +103,9 @@ async def update_user(
         current_value = getattr(user, field)
         if current_value != new_value:
             setattr(user, field, new_value)
-            changes[field] = f"{field} updated from {current_value} to {new_value}"
+            changes[field] = (
+                f"{field} updated from {current_value} to {new_value}"
+            )
 
     if changes:
         await user.save()
