@@ -9,7 +9,7 @@ class User(Model):
     name = fields.CharField(max_length=100)
     email = fields.CharField(max_length=100, unique=True)
     phone_number = fields.BigIntField
-    aadhar_card_number = fields.BigIntField(min_length=12, unique=True)
+    aadhar_card_number = fields.BigIntField(length=12, unique=True)
     pan = fields.CharField(length=10, validators=[validate_pan])
     occupation = fields.CharField(max_length=30)
     martial_status = fields.CharEnumField(
