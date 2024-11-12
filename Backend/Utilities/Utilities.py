@@ -4,6 +4,13 @@ from decouple import config
 import jwt
 
 
+async def get_token_from_authorization_header_value(
+    authorization_header_value: str,
+):
+    token = authorization_header_value.split(" ")[1]
+    return token
+
+
 async def verify_jwt(authorization: str = Header(None)):
     """
     Dependency that verifies the JWT token and checks if it's blacklisted.
@@ -15,7 +22,7 @@ async def verify_jwt(authorization: str = Header(None)):
         )
 
     # Remove "Bearer " prefix and decode the token
-    token = authorization.split(" ")[1]
+    token = await get_token_from_authorization_header_value(authorization)
     try:
         payload = jwt.decode(
             token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
