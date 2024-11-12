@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
 from JWT_Authentication.Verify_JWT import verify_jwt
-from Users.API_Data_Schemas import UserCreate, LoginData, UserUpdate
+from Backend.Users.Data_Schemas import UserCreate, LoginData, UserUpdate
 from Users.Methods import (
     create_user,
     authenticate_user,

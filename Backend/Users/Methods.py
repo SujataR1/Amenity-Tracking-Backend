@@ -1,5 +1,5 @@
 from Database_and_ORM.Database_Models import User, Blacklisted_Tokens
-from Users.API_Data_Schemas import UserCreate
+from Backend.Users.Data_Schemas import UserCreate
 from tortoise.exceptions import IntegrityError
 from passlib.hash import bcrypt
 from typing import Union
