@@ -6,9 +6,8 @@ from typing import Union
 import jwt
 from datetime import datetime, timedelta
 from decouple import config
-from fastapi import HTTPException, status, Depends
-from typing import Dict, Optional
-import json
+from fastapi import HTTPException, status
+from typing import Dict
 
 
 async def create_user(user_data: UserCreate) -> Union[User, dict]:
