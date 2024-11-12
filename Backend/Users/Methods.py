@@ -1,6 +1,6 @@
 from Database_and_ORM.Database_Models import User, Blacklisted_Tokens, OTP
 from Users.Data_Schemas import UserCreate, OTPTypeEnum
-from tortoise.exceptions import IntegrityError
+from tortoise.exceptions import IntegrityError, DoesNotExist
 from passlib.hash import bcrypt
 from typing import Union
 import jwt
@@ -12,6 +12,7 @@ from Utility_Methods.Utility_Methods import (
     get_token_from_authorization_header_value,
     create_jwt,
     verify_otp,
+    generate_random_otp,
 )
 
 
@@ -41,9 +42,10 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
         return {"error": "A user with this email already exists."}
 
 
-async def authenticate_user(email: str, password: str) -> str:
+async def authenticate_user(email: str, password: str, otp_code: int = None):
     """
     Authenticates a user by email and password.
+    If 2FA is enabled, requires OTP verification before generating JWT.
     """
     user = await User.get_or_none(email=email)
     if user is None or not bcrypt.verify(password, user.password):
@@ -52,6 +54,16 @@ async def authenticate_user(email: str, password: str) -> str:
             detail="Invalid credentials",
         )
 
+    # Check if 2FA is enabled for the user
+    if (
+        user
+        and bcrypt.verify(password, user.password)
+        and user.two_factor_enabled
+    ):
+        if await generate_otp(email, purpose=OTPTypeEnum.TWO_FA):
+            return {"message": "OTP Generated Successfully"}
+
+    # Generate JWT token if 2FA is not enabled or OTP verification is successful
     token = await create_jwt(str(user.id), expiration_duration=1440)
     return user, token
 
@@ -149,40 +161,76 @@ async def delete_user(payload: dict, authorization: str):
     return {"message": "User deleted successfully and token blacklisted"}
 
 
-async def verify_2fa_and_login(payload: dict, otp_code: int):
+async def verify_2fa_and_login(email: str, otp_code: int):
     """
     Verifies the OTP for 2FA and, if valid, generates a JWT token and sets it in the response headers.
     """
     # Retrieve the OTP entry for the user and 2FA purpose
-    user_id = payload.get(user_id)
+    user = await User.get_or_none(email=email)
+    user_id = user.id
     verified = await verify_otp(user_id, otp_code, purpose=OTPTypeEnum.TWO_FA)
 
     if verified:
         # Generate JWT token
         token = await create_jwt(user_id, expiration_duration=1440)
-
-        # Prepare response with the token in the headers
-        response = {
-            "message": "2FA verification successful. You are now logged in."
-        }
-        response.headers["Authorization"] = f"Bearer {token}"
-
+        response = token, user
     else:
-        response = {"message": "2FA verification unsuccessful"}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="2FA Verification Failed",
+        )
 
     return response
 
 
-async def verify_email_otp(payload: dict, otp_code: int) -> bool:
+async def generate_otp(email: str, purpose: OTPTypeEnum) -> int:
+    """
+    Generates a unique OTP and stores it in the database for a specific user and purpose.
+    Ensures previous OTPs for the same purpose are invalidated.
+    """
+    # Look up the user_id based on the email
+    try:
+        user = await User.get(email=email)
+        user_id = user.id
+    except DoesNotExist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User with this email does not exist.",
+        )
+
+    # Generate a random 6-digit OTP
+    otp_code = await generate_random_otp()
+
+    # Invalidate any existing OTPs for this user and purpose
+    await OTP.filter(user_id=user_id, purpose=purpose).delete()
+
+    # Create a new OTP entry
+    try:
+        otp_entry = OTP(
+            otp_code=otp_code,
+            user_id=user_id,
+            purpose=purpose,
+            expiry=datetime.utcnow()
+            + timedelta(minutes=10),  # OTP valid for 10 minutes
+        )
+        await otp_entry.save()
+        return otp_code
+    except IntegrityError:
+        # If the OTP already exists, retry with a new one
+        return await generate_otp(email, purpose)
+
+
+async def verify_email_otp(payload: Dict, otp_code: int) -> bool:
     """
     Verifies the OTP for email verification. If valid, marks the user's email as verified.
     """
     user_id = payload.get("user_id")
+    user = await User.get(id=user_id)
+
     if await verify_otp(
         otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
     ):
         # Update the user's email_verified status
-        user = await User.get(id=user_id)
         user.email_verified = True
         await user.save()
         return True
@@ -205,7 +253,7 @@ async def request_password_reset_by_email(email: str) -> str:
         )
 
     # Generate reset token if user exists
-    reset_token = await create_jwt(user.id, expiration_duration=2)
+    reset_token = await create_jwt(user.id, expiration_duration=30)
     return reset_token
 
 
