@@ -1,6 +1,13 @@
-from fastapi import APIRouter, HTTPException, status, Response, Header
-from Users.API_Data_Schemas import UserCreate, LoginData
-from Users.Methods import create_user, authenticate_user, logout_user
+from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
+from Backend.Utilities.Utilities import verify_jwt
+from Backend.Users.Data_Schemas import UserCreate, LoginData, UserUpdate
+from Users.Methods import (
+    create_user,
+    authenticate_user,
+    logout_user,
+    update_user,
+    delete_user,
+)
 
 User_Router = APIRouter()
 
@@ -34,14 +41,37 @@ async def login_user(response: Response, login_data: LoginData):
 
 
 @User_Router.post("/logout")
-async def logout(authorization: str = Header(None)):
+async def logout(
+    authorization: str = Header(None), payload=Depends(verify_jwt)
+):
     """
     Logs out the user by blacklisting the JWT token.
     """
     if not authorization:
         raise HTTPException(status_code=400, detail="Cannot verify user")
 
-    # Extract the token from the "Bearer <token>" format
-    token = authorization.split(" ")[1]
-    response = await logout_user(token)
+    response = await logout_user(authorization, payload)
     return response
+
+
+@User_Router.patch("/update")
+async def update_user_endpoint(
+    update_data: UserUpdate, payload=Depends(verify_jwt)
+):
+    """
+    Patch endpoint to update user details based on the user ID extracted from JWT.
+    """
+    changes = await update_user(
+        update_data.model_dump(exclude_unset=True), payload
+    )
+    return changes
+
+
+@User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_endpoint(
+    authorization: str = Header(None), payload=Depends(verify_jwt)
+):
+    """
+    Endpoint to delete a user and blacklist the token.
+    """
+    return await delete_user(authorization, payload)

@@ -4,6 +4,13 @@ from decouple import config
 import jwt
 
 
+async def get_token_from_authorization_header_value(
+    authorization_header_value: str,
+):
+    token = authorization_header_value.split(" ")[1]
+    return token
+
+
 async def verify_jwt(authorization: str = Header(None)):
     """
     Dependency that verifies the JWT token and checks if it's blacklisted.
@@ -11,11 +18,11 @@ async def verify_jwt(authorization: str = Header(None)):
     if authorization is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header missing",
+            detail="Please log in",
         )
 
     # Remove "Bearer " prefix and decode the token
-    token = authorization.split(" ")[1]
+    token = await get_token_from_authorization_header_value(authorization)
     try:
         payload = jwt.decode(
             token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
@@ -31,7 +38,7 @@ async def verify_jwt(authorization: str = Header(None)):
         )
 
     # Check if the token is blacklisted
-    if await Blacklisted_Tokens.get_or_none(token=token):
+    if await Blacklisted_Tokens.get_or_none(Blacklisted_Tokens=token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="You have already logged out. Please log in again.",
