@@ -72,6 +72,8 @@ async def logout_user(token: str, payload):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Either you have already logged out, or there's something wrong on our end",
             )
+    else:
+        return "You have already logged out!"
 
 
 async def update_user(update_data: dict, payload: dict):
@@ -79,36 +81,41 @@ async def update_user(update_data: dict, payload: dict):
     Updates user details based on user_id extracted from JWT token in authorization header.
     """
     # Manually call verify_jwt with the authorization header
-    user_id = payload.get("user_id")
 
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Please log in",
-        )
+    if payload:
+        user_id = payload.get("user_id")
 
-    # Retrieve the user from the database
-    user = await User.get_or_none(id=user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    changes = {}
-
-    # Iterate through the update data and apply changes
-    for field, new_value in update_data.items():
-        if field == "role":  # Exclude updating the role field
-            continue
-        current_value = getattr(user, field)
-        if current_value != new_value:
-            setattr(user, field, new_value)
-            changes[field] = (
-                f"{field} updated from {current_value} to {new_value}"
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Please log in",
             )
 
-    if changes:
-        await user.save()
-        return changes
+        # Retrieve the user from the database
+        user = await User.get_or_none(id=user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
+
+        changes = {}
+
+        # Iterate through the update data and apply changes
+        for field, new_value in update_data.items():
+            if field == "role":  # Exclude updating the role field
+                continue
+            current_value = getattr(user, field)
+            if current_value != new_value:
+                setattr(user, field, new_value)
+                changes[field] = (
+                    f"`{field}` updated from `{current_value}` to `{new_value}`"
+                )
+
+        if changes:
+            await user.save()
+            return changes
+        else:
+            return {"message": "Nothing was changed!"}
+
     else:
-        return {"message": "Nothing was changed"}
+        return "Please login to update your data!"
