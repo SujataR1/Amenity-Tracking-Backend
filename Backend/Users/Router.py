@@ -31,9 +31,7 @@ async def create_user_endpoint(user: UserCreate):
 
 
 @User_Router.post("/login", status_code=status.HTTP_200_OK)
-async def login_user(
-    response: Response, login_data: LoginData, otp_code: int = None
-):
+async def login_user(response: Response, login_data: LoginData, otp_code: int = None):
     """
     Login endpoint that validates user credentials. If 2FA is enabled, requires OTP.
     """
@@ -62,15 +60,11 @@ async def logout_user_endpoint(
 
 
 @User_Router.patch("/update")
-async def update_user_endpoint(
-    update_data: UserUpdate, payload=Depends(verify_jwt)
-):
+async def update_user_endpoint(update_data: UserUpdate, payload=Depends(verify_jwt)):
     """
     Updates user details based on the user ID extracted from JWT.
     """
-    return await update_user(
-        update_data.model_dump(exclude_unset=True), payload
-    )
+    return await update_user(update_data.model_dump(exclude_unset=True), payload)
 
 
 @User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
@@ -84,9 +78,7 @@ async def delete_user_endpoint(
 
 
 @User_Router.post("/2fa/verify", status_code=status.HTTP_200_OK)
-async def verify_2fa_login_endpoint(
-    response: Response, email: str, otp_code: int
-):
+async def verify_2fa_login_endpoint(response: Response, email: str, otp_code: int):
     """
     Verifies the OTP for 2FA and, if valid, logs the user in by returning a JWT token.
     """
@@ -110,9 +102,7 @@ async def generate_otp_endpoint(email: str, purpose: OTPTypeEnum):
 
 
 @User_Router.post("/otp/verify/email", status_code=status.HTTP_200_OK)
-async def verify_email_otp_endpoint(
-    otp_code: int, payload=Depends(verify_jwt)
-):
+async def verify_email_otp_endpoint(otp_code: int, payload=Depends(verify_jwt)):
     """
     Verifies the OTP for email verification and updates the user's email_verified status.
     """
@@ -137,13 +127,9 @@ async def request_password_reset(email: str):
     }
 
 
-@User_Router.post(
-    "/password-reset/confirm/{token}", status_code=status.HTTP_200_OK
-)
-async def reset_password_endpoint(
-    token: str, new_password: str, payload=Depends(verify_jwt)
-):
+@User_Router.post("/password-reset/confirm/{token}", status_code=status.HTTP_200_OK)
+async def reset_password_endpoint(token: str, new_password: str):
     """
     Confirms the password reset by validating the reset token and updating the user's password.
     """
-    return await reset_password(token, payload, new_password)
+    return await reset_password(token, new_password)

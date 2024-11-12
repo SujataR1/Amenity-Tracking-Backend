@@ -14,6 +14,11 @@ async def get_token_from_authorization_header_value(
     return token
 
 
+async def decode_jwt(token):
+    payload = jwt.decode(token, config("JWT_SECRET_STRING"), algorithms=["HS256"])
+    return payload
+
+
 async def verify_jwt(authorization: str = Header(None)):
     """
     Dependency that verifies the JWT token and checks if it's blacklisted.
@@ -27,9 +32,7 @@ async def verify_jwt(authorization: str = Header(None)):
     # Remove "Bearer " prefix and decode the token
     token = await get_token_from_authorization_header_value(authorization)
     try:
-        payload = jwt.decode(
-            token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
-        )
+        payload = await decode_jwt(token)
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -68,9 +71,7 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
     return token
 
 
-async def verify_otp(
-    user_id: str, otp_code: int, purpose: OTPTypeEnum
-) -> bool:
+async def verify_otp(user_id: str, otp_code: int, purpose: OTPTypeEnum) -> bool:
     """
     Verifies an OTP for a specific user and purpose. If valid, deletes the OTP.
     """
