@@ -1,5 +1,5 @@
 from Database_and_ORM.Database_Models import User, Blacklisted_Tokens, OTP
-from Backend.Users.Data_Schemas import UserCreate, OTPTypeEnum
+from Users.Data_Schemas import UserCreate, OTPTypeEnum
 from tortoise.exceptions import IntegrityError
 from passlib.hash import bcrypt
 from typing import Union
