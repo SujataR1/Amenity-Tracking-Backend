@@ -1,7 +1,7 @@
 from tortoise import fields
 from tortoise.models import Model
-from Backend.Users.Data_Schemas import RoleEnum, MartialStatusEnum, OTPTypeEnum
-from Methods import validate_pan
+from Users.Data_Schemas import RoleEnum, MartialStatusEnum, OTPTypeEnum
+# from Methods import validate_pan
 
 
 class User(Model):
@@ -12,7 +12,7 @@ class User(Model):
     phone_number = fields.BigIntField
     phone_number_verified = fields.BooleanField(default=False)
     aadhar_card_number = fields.BigIntField(length=12, unique=True)
-    pan = fields.CharField(length=10, validators=[validate_pan])
+    pan = fields.CharField(length=10)
     occupation = fields.CharField(max_length=30)
     martial_status = fields.CharEnumField(
         MartialStatusEnum, default=MartialStatusEnum.unmarried
