@@ -155,11 +155,11 @@ async def verify_2fa_and_login(payload: dict, otp_code: int):
     """
     # Retrieve the OTP entry for the user and 2FA purpose
     user_id = payload.get(user_id)
-    verified = verify_otp(user_id, otp_code, purpose=OTPTypeEnum.TWO_FA)
+    verified = await verify_otp(user_id, otp_code, purpose=OTPTypeEnum.TWO_FA)
 
     if verified:
         # Generate JWT token
-        token = create_jwt(user_id, expiration_duration=1440)
+        token = await create_jwt(user_id, expiration_duration=1440)
 
         # Prepare response with the token in the headers
         response = {
