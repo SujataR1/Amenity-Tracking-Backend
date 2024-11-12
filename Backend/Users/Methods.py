@@ -3,7 +3,6 @@ from Users.Data_Schemas import UserCreate, OTPTypeEnum
 from tortoise.exceptions import IntegrityError, DoesNotExist
 from passlib.hash import bcrypt
 from typing import Union
-import jwt
 from datetime import datetime, timedelta
 from decouple import config
 from fastapi import HTTPException, status
@@ -13,6 +12,7 @@ from Utility_Methods.Utility_Methods import (
     create_jwt,
     verify_otp,
     generate_random_otp,
+    decode_jwt,
 )
 
 
@@ -55,13 +55,9 @@ async def authenticate_user(email: str, password: str, otp_code: int = None):
         )
 
     # Check if 2FA is enabled for the user
-    if (
-        user
-        and bcrypt.verify(password, user.password)
-        and user.two_factor_enabled
-    ):
+    if user and bcrypt.verify(password, user.password) and user.two_factor_enabled:
         if await generate_otp(email, purpose=OTPTypeEnum.TWO_FA):
-            return {"message": "OTP Generated Successfully"}
+            return {"message": "OTP for 2FA Generated Successfully"}
 
     # Generate JWT token if 2FA is not enabled or OTP verification is successful
     token = await create_jwt(str(user.id), expiration_duration=1440)
@@ -227,9 +223,7 @@ async def verify_email_otp(payload: Dict, otp_code: int) -> bool:
     user_id = payload.get("user_id")
     user = await User.get(id=user_id)
 
-    if await verify_otp(
-        otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
-    ):
+    if await verify_otp(otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION):
         # Update the user's email_verified status
         user.email_verified = True
         await user.save()
@@ -257,7 +251,8 @@ async def request_password_reset_by_email(email: str) -> str:
     return reset_token
 
 
-async def reset_password(token: str, payload: dict, new_password: str):
+async def reset_password(token: str, new_password: str):
+    payload = await decode_jwt(token)
     user_id = payload.get("user_id")
     user = await User.get_or_none(id=user_id)
     if not user:
