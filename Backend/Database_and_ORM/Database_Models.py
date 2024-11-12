@@ -1,6 +1,7 @@
 from tortoise import fields
 from tortoise.models import Model
 from Users.Data_Schemas import RoleEnum, MartialStatusEnum, OTPTypeEnum
+
 # from Methods import validate_pan
 
 
