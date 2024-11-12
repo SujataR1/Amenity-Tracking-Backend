@@ -137,7 +137,9 @@ async def request_password_reset(email: str):
     }
 
 
-@User_Router.post("/password-reset/confirm", status_code=status.HTTP_200_OK)
+@User_Router.post(
+    "/password-reset/confirm/{token}", status_code=status.HTTP_200_OK
+)
 async def reset_password_endpoint(
     token: str, new_password: str, payload=Depends(verify_jwt)
 ):
