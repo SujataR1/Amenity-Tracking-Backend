@@ -13,7 +13,7 @@ class User(Model):
     phone_number = fields.BigIntField
     phone_number_verified = fields.BooleanField(default=False)
     aadhar_card_number = fields.BigIntField(length=12, unique=True)
-    pan = fields.CharField(length=10)
+    pan = fields.CharField(max_length=10)
     occupation = fields.CharField(max_length=30)
     martial_status = fields.CharEnumField(
         MartialStatusEnum, default=MartialStatusEnum.unmarried
