@@ -12,7 +12,7 @@ from Users.Methods import (
 User_Router = APIRouter()
 
 
-@User_Router.post("/", status_code=status.HTTP_201_CREATED)
+@User_Router.post("/signup", status_code=status.HTTP_201_CREATED)
 async def create_user_endpoint(user: UserCreate):
     """
     Endpoint to create a new user. Expects JSON body with name, email, password, and role.
