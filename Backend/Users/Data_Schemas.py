@@ -8,6 +8,13 @@ class RoleEnum(str, Enum):
     user = "user"
 
 
+class OTPTypeEnum(str, Enum):
+    TWO_FA = "2FA"
+    PASSWORD_RESET = "Password Reset"
+    MAIL_VERIFICATION = "Mail Verification"
+    PHONE_VERIFICATION = "Phone Number Verification"
+
+
 class MartialStatusEnum(str, Enum):
     unmarried = "unmarried"
     married = "married"

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
-from Backend.Utilities.Utilities import verify_jwt
+from Backend.Utility_Methods.Utility_Methods import verify_jwt
 from Backend.Users.Data_Schemas import UserCreate, LoginData, UserUpdate
 from Users.Methods import (
     create_user,
