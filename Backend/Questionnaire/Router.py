@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, Field
 from typing import Dict
 from tortoise.exceptions import DoesNotExist
 from Questionnaire.Methods import (
