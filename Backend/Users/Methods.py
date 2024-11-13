@@ -355,13 +355,18 @@ async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
     """
     user_id = payload.get("user_id")
     user = await User.get_or_none(id=user_id)
-    if user:
+    if user and user.password == entered_password:
         user.two_fa_status = not user.two_fa_status
         await user.save()
         if user.two_fa_status:
             return {"message": "You have enabled 2FA!"}
         elif not user.two_fa_status:
             return {"message": "You have disabled 2FA !"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Please check the entered password",
+        )
 
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
