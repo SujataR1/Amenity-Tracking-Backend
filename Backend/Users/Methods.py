@@ -295,8 +295,10 @@ async def request_password_reset_by_email(email: str) -> str:
     reset_link = (
         f"http://{config("PASSWORD_RESET_LANDING_PAGE_URL")}/{reset_token}"
     )
+     
+    user_id = user.id
 
-    values = {"username": "f{user.id}", "reset_link": "f{reset_link}"}
+    values = {"username": f"{user_id}", "reset_link": f"{reset_link}"}
 
     content = await get_email_content("password_reset")
 
