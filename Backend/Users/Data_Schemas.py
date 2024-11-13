@@ -46,10 +46,14 @@ class UserUpdate(BaseModel):
     aadhar_card_number: Optional[int] = None
     pan: Optional[str] = None
     occupation: Optional[str] = None
-    martial_status: Optional[MartialStatusEnum]
+    martial_status: Optional[MartialStatusEnum] = None
     annual_income_bar: Optional[int] = None
 
 
 class LoginData(BaseModel):
     email: str
     password: str
+
+
+class Toggle2FARequest(BaseModel):
+    entered_password: str

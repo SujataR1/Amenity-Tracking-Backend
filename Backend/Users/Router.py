@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
 from Utility_Methods.Utility_Methods import verify_jwt
-from Users.Data_Schemas import UserCreate, LoginData, UserUpdate, OTPTypeEnum
+from Users.Data_Schemas import (
+    UserCreate,
+    LoginData,
+    UserUpdate,
+    OTPTypeEnum,
+    Toggle2FARequest,
+)
 from Users.Methods import (
     create_user,
     authenticate_user,
@@ -54,7 +60,7 @@ async def login_user(
 
 @User_Router.post("/logout")
 async def logout_user_endpoint(
-    authorization: str = Header(None), payload=Depends(verify_jwt)
+    authorization: str = Header(None), payload: dict = Depends(verify_jwt)
 ):
     """
     Logs out the user by blacklisting the JWT token.
@@ -78,7 +84,7 @@ async def update_user_endpoint(
 
 @User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user_endpoint(
-    authorization: str = Header(None), payload=Depends(verify_jwt)
+    authorization: str = Header(None), payload: dict = Depends(verify_jwt)
 ):
     """
     Endpoint to delete a user and blacklist the token.
@@ -91,9 +97,8 @@ async def get_2fa_status_endpoint(payload=Depends(verify_jwt)):
     """
     Retrieves the current 2FA status for the authenticated user.
     """
-    user_id = payload.get("user_id")
-    if user_id:
-        status = await get_2fa_status(user_id)
+    if payload:
+        status = await get_2fa_status(payload)
         return {f"status"}
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -103,17 +108,20 @@ async def get_2fa_status_endpoint(payload=Depends(verify_jwt)):
 
 # Endpoint to toggle 2FA status
 @User_Router.patch("/2fa/toggle", status_code=status.HTTP_200_OK)
-async def toggle_2fa_status_endpoint(payload=Depends(verify_jwt)):
+async def toggle_2fa_status_endpoint(
+    request: Toggle2FARequest, payload=Depends(verify_jwt)
+):
     """
     Toggles the 2FA status for the authenticated user.
     """
-    user_id = payload.get("user_id")
-    if user_id:
-        new_status = await toggle_2fa_status(user_id)
-        return {"message": f"{new_status}"}
+    if payload:
+        new_status = await toggle_2fa_status(
+            payload, entered_password=request.entered_password
+        )
+        return {"message": f"2FA status updated: {new_status}"}
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail="User not authenticated.",
+        detail="Please login to change 2FA Status",
     )
 
 
