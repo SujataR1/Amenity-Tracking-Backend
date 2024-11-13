@@ -1,5 +1,6 @@
 from Database_and_ORM.Database_Models import User, Blacklisted_Tokens, OTP
 from Users.Data_Schemas import UserCreate, OTPTypeEnum
+from Comms.Methods import send_email, get_email_content
 from tortoise.exceptions import IntegrityError, DoesNotExist
 from passlib.hash import bcrypt
 from typing import Union
@@ -13,6 +14,7 @@ from Utility_Methods.Utility_Methods import (
     verify_otp,
     generate_random_otp,
     decode_jwt,
+    verify_user_password,
 )
 
 
@@ -27,6 +29,8 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
         name=user_data.name,
         email=user_data.email,  # Defaults to False if not passed
         password=hashed_password,
+        address = user_data.address,
+        pin_code = user_data.pin_code,
         phone_number=user_data.phone_number,  # Defaults to False if not passed
         aadhar_card_number=user_data.aadhar_card_number,
         pan=user_data.pan,
@@ -48,6 +52,7 @@ async def authenticate_user(email: str, password: str, otp_code: int = None):
     If 2FA is enabled, requires OTP verification before generating JWT.
     """
     user = await User.get_or_none(email=email)
+    verified = await verify_user_password
     if user is None or not bcrypt.verify(password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,8 +60,12 @@ async def authenticate_user(email: str, password: str, otp_code: int = None):
         )
 
     # Check if 2FA is enabled for the user
-    if user and bcrypt.verify(password, user.password) and user.two_factor_enabled:
-        if await generate_otp(email, purpose=OTPTypeEnum.TWO_FA):
+    if (
+        user
+        and bcrypt.verify(password, user.password)
+        and user.two_fa_status
+    ):
+        if await generate_and_send_otp(email, purpose=OTPTypeEnum.TWO_FA):
             return {"message": "OTP for 2FA Generated Successfully"}
 
     # Generate JWT token if 2FA is not enabled or OTP verification is successful
@@ -179,7 +188,7 @@ async def verify_2fa_and_login(email: str, otp_code: int):
     return response
 
 
-async def generate_otp(email: str, purpose: OTPTypeEnum) -> int:
+async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> int:
     """
     Generates a unique OTP and stores it in the database for a specific user and purpose.
     Ensures previous OTPs for the same purpose are invalidated.
@@ -210,10 +219,26 @@ async def generate_otp(email: str, purpose: OTPTypeEnum) -> int:
             + timedelta(minutes=10),  # OTP valid for 10 minutes
         )
         await otp_entry.save()
-        return otp_code
+        values = {"username": "f{user_id}", "otp_code": "f{otp_code}"}
+        if purpose == OTPTypeEnum.TWO_FA:
+            content = await get_email_content("2fa_verification", **values)
+        elif purpose == OTPTypeEnum.MAIL_VERIFICATION:
+            content = await get_email_content("email_verification", **values)
+
+        sent_email = await send_email(
+            to_email=email, subject=content["subject"], body=content["body"]
+        )
+        if send_email:
+            return {"message": "OTP sent successfully"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="OTP Couldn't be send",
+            )
+
     except IntegrityError:
         # If the OTP already exists, retry with a new one
-        return await generate_otp(email, purpose)
+        return await generate_and_send_otp(email, purpose)
 
 
 async def verify_email_otp(payload: Dict, otp_code: int) -> bool:
@@ -223,7 +248,9 @@ async def verify_email_otp(payload: Dict, otp_code: int) -> bool:
     user_id = payload.get("user_id")
     user = await User.get(id=user_id)
 
-    if await verify_otp(otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION):
+    if await verify_otp(
+        otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
+    ):
         # Update the user's email_verified status
         user.email_verified = True
         await user.save()
@@ -248,7 +275,25 @@ async def request_password_reset_by_email(email: str) -> str:
 
     # Generate reset token if user exists
     reset_token = await create_jwt(user.id, expiration_duration=30)
-    return reset_token
+    reset_link = (
+        f"http://{config("PASSWORD_RESET_LANDING_PAGE_URL")}/{reset_token}"
+    )
+
+    values = {"username": "f{user.id}", "reset_link": "f{reset_link}"}
+
+    content = await get_email_content("password_reset")
+
+    # Send the email
+    email_sent = await send_email(
+        to_email=email, subject=content["subject"], body=content["body"]
+    )
+    if email_sent:
+        return {"message": "Password reset email sent successfully."}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to send the password reset link",
+        )
 
 
 async def reset_password(token: str, new_password: str):

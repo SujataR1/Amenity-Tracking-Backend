@@ -16,17 +16,19 @@ class OTPTypeEnum(str, Enum):
 
 
 class MartialStatusEnum(str, Enum):
-    unmarried = "unmarried"
-    married = "married"
-    divorced = "divorced"
-    judicially_separated = "judicially_separated"
-    widowed = "widowed"
+    unmarried = "Unmarried"
+    married = "Married"
+    divorced = "Divorced"
+    judicially_separated = "Judicially Separated"
+    widowed = "Widowed"
 
 
 class UserCreate(BaseModel):
     name: str
     email: EmailStr  # Automatically validates email format
     password: str
+    address: str
+    pin_code: int
     phone_number: int
     aadhar_card_number: int
     pan: str
@@ -38,6 +40,8 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    pin_code: Optional[int] = None
     phone_number: Optional[int] = None
     aadhar_card_number: Optional[int] = None
     pan: Optional[str] = None
