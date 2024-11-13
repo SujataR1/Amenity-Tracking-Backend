@@ -1,10 +1,11 @@
 from Database_and_ORM.Methods import init_db, close_db
-from Database_and_ORM.Database_Models import Blacklisted_Tokens
+from Database_and_ORM.Database_Models import Blacklisted_Tokens, User
 from fastapi.middleware.cors import CORSMiddleware
 import jwt
 from fastapi import Request, HTTPException, status, Header
 from starlette.middleware.base import BaseHTTPMiddleware
 from decouple import config
+
 
 
 async def startup_event():
@@ -48,3 +49,4 @@ def add_api_key_middleware(app):
     Adds API key middleware to the FastAPI app.
     """
     app.add_middleware(APIKeyMiddleware)
+

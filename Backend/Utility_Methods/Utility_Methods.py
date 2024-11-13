@@ -5,6 +5,7 @@ from decouple import config
 import jwt
 import random
 from datetime import datetime, timedelta
+import bcrypt
 
 
 async def get_token_from_authorization_header_value(
@@ -15,7 +16,9 @@ async def get_token_from_authorization_header_value(
 
 
 async def decode_jwt(token):
-    payload = jwt.decode(token, config("JWT_SECRET_STRING"), algorithms=["HS256"])
+    payload = jwt.decode(
+        token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
+    )
     return payload
 
 
@@ -71,7 +74,9 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
     return token
 
 
-async def verify_otp(user_id: str, otp_code: int, purpose: OTPTypeEnum) -> bool:
+async def verify_otp(
+    user_id: str, otp_code: int, purpose: OTPTypeEnum
+) -> bool:
     """
     Verifies an OTP for a specific user and purpose. If valid, deletes the OTP.
     """
@@ -89,3 +94,7 @@ async def verify_otp(user_id: str, otp_code: int, purpose: OTPTypeEnum) -> bool:
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="Invalid or expired OTP",
     )
+
+async def verify_user_password (entered_password, user_password):
+    verified = bcrypt.verify(entered_password, user_password)
+    return verified

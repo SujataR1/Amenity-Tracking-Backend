@@ -10,6 +10,8 @@ class User(Model):
     name = fields.CharField(max_length=100)
     email = fields.CharField(max_length=100, unique=True)
     email_verified = fields.BooleanField(default=False)
+    address = fields.CharField(max_length=500)
+    pin_code = fields.BigIntField(max_length=6)
     phone_number = fields.BigIntField
     phone_number_verified = fields.BooleanField(default=False)
     aadhar_card_number = fields.BigIntField(length=12, unique=True)
@@ -37,11 +39,15 @@ class Blacklisted_Tokens(Model):
 
 
 class OTP(Model):
-    otp_code = fields.CharField(max_length=6, pk=True)  # Primary key for uniqueness
+    otp_code = fields.CharField(
+        max_length=6, pk=True
+    )  # Primary key for uniqueness
     user = fields.ForeignKeyField(
         "models.User", related_name="otps", on_delete="CASCADE"
     )
-    purpose = fields.CharEnumField(OTPTypeEnum, description="Purpose of the OTP")
+    purpose = fields.CharEnumField(
+        OTPTypeEnum, description="Purpose of the OTP"
+    )
     expiration = fields.DatetimeField()
     created_at = fields.DatetimeField(auto_now_add=True)
 
