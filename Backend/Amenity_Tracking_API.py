@@ -32,7 +32,9 @@ middlewares = [
     # Middleware(APITrackingMiddleware),
 ]
 
-app = FastAPI(title="Amenity Tracking API", lifespan=lifespan, middleware=middlewares)
+app = FastAPI(
+    title="Amenity Tracking API", lifespan=lifespan, middleware=middlewares
+)
 
 
 # Global route

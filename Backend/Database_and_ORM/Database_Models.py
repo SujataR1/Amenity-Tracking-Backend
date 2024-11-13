@@ -1,6 +1,7 @@
 from tortoise import fields
 from tortoise.models import Model
 from Users.Data_Schemas import RoleEnum, MartialStatusEnum, OTPTypeEnum
+from Questionnaire.Data_Schemas import MonthEnum
 
 # from Methods import validate_pan
 
@@ -39,11 +40,15 @@ class Blacklisted_Tokens(Model):
 
 
 class OTP(Model):
-    otp_code = fields.CharField(max_length=8, pk=True)  # Primary key for uniqueness
+    otp_code = fields.CharField(
+        max_length=8, pk=True
+    )  # Primary key for uniqueness
     user = fields.ForeignKeyField(
         "models.User", related_name="otps", on_delete="CASCADE"
     )
-    purpose = fields.CharEnumField(OTPTypeEnum, description="Purpose of the OTP")
+    purpose = fields.CharEnumField(
+        OTPTypeEnum, description="Purpose of the OTP"
+    )
     expiration = fields.DatetimeField()
     created_at = fields.DatetimeField(auto_now_add=True)
 
@@ -66,20 +71,26 @@ class QuestionnaireAnswers(Model):
     six = fields.BooleanField()  # "Are you using an electric iron?"
     seven = fields.BooleanField()  # "Are you using a washing machine?"
     eight = fields.BooleanField()  # "Are you using a dishwasher?"
-    nine = fields.BooleanField()  # "Are you using an induction oven, hot plate, etc.?"
-    ten = fields.BooleanField()  # "Are you using a microwave oven, grill, etc.?"
+    nine = (
+        fields.BooleanField()
+    )  # "Are you using an induction oven, hot plate, etc.?"
+    ten = (
+        fields.BooleanField()
+    )  # "Are you using a microwave oven, grill, etc.?"
     eleven = fields.BooleanField()  # "Are you using a water heater kettle?"
     twelve = fields.BooleanField()  # "Are you using a vacuum cleaner?"
     thirteen = fields.BooleanField()  # "Are you using a room heater?"
-    fourteen = fields.FloatField()  # "Can you estimate the surface area of your home?"
+    fourteen = (
+        fields.FloatField()
+    )  # "Can you estimate the surface area of your home?"
     fifteen = (
         fields.BooleanField()
     )  # "If you are living in a villa, do you have a swimming pool?"
     sixteen = (
         fields.BooleanField()
     )  # "If you are living in a villa, do you have a garden?"
-    seventeen = fields.CharField(
-        max_length=50
+    seventeen = fields.CharEnumField(
+        MonthEnum
     )  # "During which month do you generally go for vacations?"
     eighteen = fields.IntField()  # "How long is your vacation per trip?"
 

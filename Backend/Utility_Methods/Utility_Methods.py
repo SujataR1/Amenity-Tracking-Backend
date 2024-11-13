@@ -17,7 +17,9 @@ async def get_token_from_authorization_header_value(
 
 
 async def decode_jwt(token):
-    payload = jwt.decode(token, config("JWT_SECRET_STRING"), algorithms=["HS256"])
+    payload = jwt.decode(
+        token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
+    )
     return payload
 
 
@@ -76,7 +78,9 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
     return token
 
 
-async def verify_otp(user_id: str, otp_code: str, purpose: OTPTypeEnum) -> bool:
+async def verify_otp(
+    user_id: str, otp_code: str, purpose: OTPTypeEnum
+) -> bool:
     """
     Verifies an OTP for a specific user and purpose. If valid, deletes the OTP.
     """
