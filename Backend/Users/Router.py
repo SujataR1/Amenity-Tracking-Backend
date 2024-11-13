@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
+from pydantic import BaseModel
 from Utility_Methods.Utility_Methods import verify_jwt
 from Users.Data_Schemas import (
     UserCreate,
@@ -6,6 +7,10 @@ from Users.Data_Schemas import (
     UserUpdate,
     OTPTypeEnum,
     Toggle2FARequest,
+    PasswordResetRequest,
+    PasswordResetConfirm,
+    TwoFARequest,
+    OTPRequest,
 )
 from Users.Methods import (
     create_user,
@@ -41,14 +46,14 @@ async def create_user_endpoint(user: UserCreate):
 
 @User_Router.post("/login", status_code=status.HTTP_200_OK)
 async def login_user(
-    response: Response, login_data: LoginData, otp_code: int = None
+    response: Response, login_data: LoginData, two_fa: TwoFARequest
 ):
     """
     Login endpoint that validates user credentials. If 2FA is enabled, requires OTP.
     """
     try:
         user, token_or_message = await authenticate_user(
-            login_data.email, login_data.password, otp_code=otp_code
+            login_data.email, login_data.password, otp_code=two_fa.otp_code
         )
         if isinstance(token_or_message, dict):  # If OTP generation message
             return token_or_message
@@ -99,14 +104,13 @@ async def get_2fa_status_endpoint(payload=Depends(verify_jwt)):
     """
     if payload:
         status = await get_2fa_status(payload)
-        return {f"status"}
+        return {"status": status}
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="Please login to view your 2FA status.",
     )
 
 
-# Endpoint to toggle 2FA status
 @User_Router.patch("/2fa/toggle", status_code=status.HTTP_200_OK)
 async def toggle_2fa_status_endpoint(
     request: Toggle2FARequest, payload=Depends(verify_jwt)
@@ -127,12 +131,14 @@ async def toggle_2fa_status_endpoint(
 
 @User_Router.post("/2fa/verify", status_code=status.HTTP_200_OK)
 async def verify_2fa_login_endpoint(
-    response: Response, email: str, otp_code: int
+    response: Response, two_fa_data: TwoFARequest
 ):
     """
     Verifies the OTP for 2FA and, if valid, logs the user in by returning a JWT token.
     """
-    token, user = await verify_2fa_and_login(email, otp_code)
+    token, user = await verify_2fa_and_login(
+        two_fa_data.email, two_fa_data.otp_code
+    )
     response.headers["Authorization"] = f"Bearer {token}"
     return {
         "message": f"2FA verification successful. User {user.name} is now logged in."
@@ -140,25 +146,25 @@ async def verify_2fa_login_endpoint(
 
 
 @User_Router.post("/otp/generate", status_code=status.HTTP_200_OK)
-async def generate_otp_endpoint(email: str, purpose: OTPTypeEnum):
+async def generate_otp_endpoint(otp_request: OTPRequest):
     """
     Generates an OTP for a specified purpose (2FA, email verification, password reset).
     """
-    otp = await generate_and_send_otp(email, purpose)
+    otp = await generate_and_send_otp(otp_request.email, otp_request.purpose)
     return {
-        "message": f"OTP for {purpose.value} generated successfully.",
+        "message": f"OTP for {otp_request.purpose.value} generated successfully.",
         "otp_code": otp,
     }
 
 
 @User_Router.post("/otp/verify/email", status_code=status.HTTP_200_OK)
 async def verify_email_otp_endpoint(
-    otp_code: int, payload=Depends(verify_jwt)
+    otp_request: OTPRequest, payload=Depends(verify_jwt)
 ):
     """
     Verifies the OTP for email verification and updates the user's email_verified status.
     """
-    verified = await verify_email_otp(payload, otp_code)
+    verified = await verify_email_otp(payload, otp_request.otp_code)
     if verified:
         return {"message": "Email verification successful"}
     raise HTTPException(
@@ -168,23 +174,25 @@ async def verify_email_otp_endpoint(
 
 
 @User_Router.post("/password-reset/request", status_code=status.HTTP_200_OK)
-async def request_password_reset(email: str):
+async def request_password_reset(request_data: PasswordResetRequest):
     """
     Requests a password reset. Sends a reset token to the user's email.
     """
-    reset_token = await request_password_reset_by_email(email)
+    reset_token = await request_password_reset_by_email(request_data.email)
     return {
         "message": "Password reset token generated",
         "reset_token": reset_token,
     }
 
 
-@User_Router.post("/password-reset/confirm", status_code=status.HTTP_200_OK)
-async def reset_password_endpoint(token: str, new_password: str):
+@User_Router.post(
+    "/password-reset/confirm/{token}", status_code=status.HTTP_200_OK
+)
+async def reset_password_endpoint(request_data: PasswordResetConfirm):
     """
     Confirms the password reset by validating the reset token and updating the user's password.
     """
-    return await reset_password(token, new_password)
+    return await reset_password(request_data.token, request_data.new_password)
 
 
 @User_Router.get("/profile", status_code=status.HTTP_200_OK)
