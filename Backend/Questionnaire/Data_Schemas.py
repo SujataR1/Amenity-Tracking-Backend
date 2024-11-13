@@ -2,7 +2,20 @@ from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Optional
 
-from enum import Enum
+
+class MonthEnum(str, Enum):
+    january = "January"
+    february = "February"
+    march = "March"
+    april = "April"
+    may = "May"
+    june = "June"
+    july = "July"
+    august = "August"
+    september = "September"
+    october = "October"
+    november = "November"
+    december = "December"
 
 
 class QuestionnaireFields(Enum):
@@ -64,14 +77,18 @@ class QuestionnaireAnswerCreate(BaseModel):
     fourteen: float  # Estimated surface area of your home (in sq units)
     fifteen: bool  # Do you have a swimming pool if living in a villa?
     sixteen: bool  # Do you have a garden if living in a villa?
-    seventeen: str  # Month(s) generally taken for vacation
+    seventeen: MonthEnum  # Month(s) generally taken for vacation
     eighteen: int  # Duration of vacation per trip (in days)
 
 
 class QuestionnaireAnswerUpdate(BaseModel):
     one: Optional[int] = Field(ge=0)  # How many people live in the home?
-    two: Optional[int] = Field(ge=0)  # How many people under 18 live in the home?
-    three: Optional[int] = Field(ge=0)  # How many bedrooms are there in your home?
+    two: Optional[int] = Field(
+        ge=0
+    )  # How many people under 18 live in the home?
+    three: Optional[int] = Field(
+        ge=0
+    )  # How many bedrooms are there in your home?
     four: Optional[bool]  # Are you using air conditioning?
     five: Optional[bool]  # Are you using a geyser?
     six: Optional[bool]  # Are you using an electric iron?
@@ -82,8 +99,12 @@ class QuestionnaireAnswerUpdate(BaseModel):
     eleven: Optional[bool]  # Are you using a water heater kettle?
     twelve: Optional[bool]  # Are you using a vacuum cleaner?
     thirteen: Optional[bool]  # Are you using a room heater?
-    fourteen: Optional[bool]  # Estimated surface area of your home (in sq units)
-    fifteen: Optional[bool]  # Do you have a swimming pool if living in a villa?
+    fourteen: Optional[
+        bool
+    ]  # Estimated surface area of your home (in sq units)
+    fifteen: Optional[
+        bool
+    ]  # Do you have a swimming pool if living in a villa?
     sixteen: Optional[bool]  # Do you have a garden if living in a villa?
-    seventeen: Optional[bool]  # Month(s) generally taken for vacation
+    seventeen: Optional[MonthEnum]  # Month(s) generally taken for vacation
     eighteen: Optional[int]  # Duration of vacation per trip (in days)

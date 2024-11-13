@@ -80,7 +80,9 @@ async def logout_user(authorization: str, payload: dict):
     """
     if payload:
         try:
-            token = await get_token_from_authorization_header_value(authorization)
+            token = await get_token_from_authorization_header_value(
+                authorization
+            )
             await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
             return {"message": "Successfully logged out"}
         except Exception as e:
@@ -174,7 +176,9 @@ async def verify_2fa_and_login(email: str, otp_code: str):
     # Retrieve the OTP entry for the user and 2FA purpose
     user = await User.get_or_none(email=email)
     user_name = user.name
-    verified = await verify_otp(user_name, otp_code, purpose=OTPTypeEnum.TWO_FA)
+    verified = await verify_otp(
+        user_name, otp_code, purpose=OTPTypeEnum.TWO_FA
+    )
 
     if verified:
         # Generate JWT token
@@ -291,7 +295,9 @@ async def verify_email_otp(payload: Dict, otp_code: str) -> bool:
     user_id = payload.get("user_id")
     user = await User.get(id=user_id)
 
-    if await verify_otp(otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION):
+    if await verify_otp(
+        otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
+    ):
         # Update the user's email_verified status
         user.email_verified = True
         await user.save()
