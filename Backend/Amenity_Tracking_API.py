@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from Database_and_ORM.Database_Connector import init_db, close_db
 from Users.Router import User_Router
+from Questionnaire.Router import Questionnaire_Router
 from decouple import config
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware import Middleware
@@ -42,5 +43,11 @@ async def root():
     return {"message": "Welcome to the Amenity Tracking API"}
 
 
-# Register the user router
-app.include_router(User_Router, prefix="/users", tags=["Users"])
+# Register the routers
+routers = [
+    (User_Router, "/users", ["Users"]),
+    (Questionnaire_Router, "/questionnaire", ["Questionnaire"]),
+]
+
+for router, prefix, tags in routers:
+    app.include_router(router, prefix=prefix, tags=tags)

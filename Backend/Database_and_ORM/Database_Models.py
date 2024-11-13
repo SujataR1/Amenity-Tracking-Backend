@@ -53,3 +53,45 @@ class OTP(Model):
 
     class Meta:
         table = "otp"
+
+
+class QuestionnaireAnswers(Model):
+    id = fields.UUIDField(pk=True)
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="questionnaire_answers",
+        on_delete=fields.CASCADE,
+    )
+    one = fields.IntField()  # "How many people live in the home?"
+    two = fields.IntField()  # "How many people under 18 live in the home?"
+    three = fields.IntField()  # "How many bedrooms are there in your home?"
+    four = fields.BooleanField()  # "Are you using air conditioning?"
+    five = fields.BooleanField()  # "Are you using a geyser?"
+    six = fields.BooleanField()  # "Are you using an electric iron?"
+    seven = fields.BooleanField()  # "Are you using a washing machine?"
+    eight = fields.BooleanField()  # "Are you using a dishwasher?"
+    nine = (
+        fields.BooleanField()
+    )  # "Are you using an induction oven, hot plate, etc.?"
+    ten = (
+        fields.BooleanField()
+    )  # "Are you using a microwave oven, grill, etc.?"
+    eleven = fields.BooleanField()  # "Are you using a water heater kettle?"
+    twelve = fields.BooleanField()  # "Are you using a vacuum cleaner?"
+    thirteen = fields.BooleanField()  # "Are you using a room heater?"
+    fourteen = (
+        fields.FloatField()
+    )  # "Can you estimate the surface area of your home?"
+    fifteen = (
+        fields.BooleanField()
+    )  # "If you are living in a villa, do you have a swimming pool?"
+    sixteen = (
+        fields.BooleanField()
+    )  # "If you are living in a villa, do you have a garden?"
+    seventeen = fields.CharField(
+        max_length=50
+    )  # "During which month do you generally go for vacations?"
+    eighteen = fields.IntField()  # "How long is your vacation per trip?"
+
+    class Meta:
+        table = "questionnaire_answers"
