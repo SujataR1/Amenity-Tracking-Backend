@@ -239,6 +239,25 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> int:
         return await generate_and_send_otp(email, purpose)
 
 
+async def get_user_data(payload: dict):
+    """
+    Retrieves user data by user_id, excluding the password field.
+    """
+    user_id = payload.get("user_data")
+    user = await User.get_or_none(id=user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Exclude the password field
+    user_data = user.to_dict()
+    user_data.pop("password", None)  # Remove the password field if it exists
+
+    return user_data
+
+
 async def verify_email_otp(payload: Dict, otp_code: int) -> bool:
     """
     Verifies the OTP for email verification. If valid, marks the user's email as verified.

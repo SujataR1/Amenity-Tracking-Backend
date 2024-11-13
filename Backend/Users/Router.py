@@ -14,6 +14,7 @@ from Users.Methods import (
     reset_password,
     toggle_2fa_status,
     get_2fa_status,
+    get_user_data,
 )
 
 User_Router = APIRouter()
@@ -176,3 +177,12 @@ async def reset_password_endpoint(token: str, new_password: str):
     Confirms the password reset by validating the reset token and updating the user's password.
     """
     return await reset_password(token, new_password)
+
+
+@User_Router.get("/profile", status_code=status.HTTP_200_OK)
+async def get_user_profile(payload=Depends(verify_jwt)):
+    """
+    Endpoint to retrieve user profile data, excluding the password field.
+    """
+    user_data = await get_user_data(payload)
+    return {"user_data": user_data}
