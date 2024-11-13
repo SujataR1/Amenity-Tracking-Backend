@@ -3,11 +3,6 @@ from enum import Enum
 from typing import Optional
 
 
-class RoleEnum(str, Enum):
-    admin = "admin"
-    user = "user"
-
-
 class OTPTypeEnum(str, Enum):
     TWO_FA = "2FA"
     PASSWORD_RESET = "Password Reset"
@@ -25,7 +20,7 @@ class MartialStatusEnum(str, Enum):
 
 class UserCreate(BaseModel):
     name: str
-    email: EmailStr  # Automatically validates email format
+    email: EmailStr
     password: str
     address: str
     pin_code: int
@@ -57,3 +52,22 @@ class LoginData(BaseModel):
 
 class Toggle2FARequest(BaseModel):
     entered_password: str
+
+
+class TwoFARequest(BaseModel):
+    email: EmailStr
+    otp_code: int
+
+
+class OTPRequest(BaseModel):
+    email: EmailStr
+    purpose: OTPTypeEnum
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
