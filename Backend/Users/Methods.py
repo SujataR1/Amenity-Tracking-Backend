@@ -29,8 +29,8 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
         name=user_data.name,
         email=user_data.email,  # Defaults to False if not passed
         password=hashed_password,
-        address = user_data.address,
-        pin_code = user_data.pin_code,
+        address=user_data.address,
+        pin_code=user_data.pin_code,
         phone_number=user_data.phone_number,  # Defaults to False if not passed
         aadhar_card_number=user_data.aadhar_card_number,
         pan=user_data.pan,
@@ -52,19 +52,17 @@ async def authenticate_user(email: str, password: str, otp_code: int = None):
     If 2FA is enabled, requires OTP verification before generating JWT.
     """
     user = await User.get_or_none(email=email)
-    verified = await verify_user_password
-    if user is None or not bcrypt.verify(password, user.password):
+    verified = await verify_user_password(
+        entered_password=password, user_password=user.password
+    )
+    if user is None or not verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
 
     # Check if 2FA is enabled for the user
-    if (
-        user
-        and bcrypt.verify(password, user.password)
-        and user.two_fa_status
-    ):
+    if user and verified and user.two_fa_status:
         if await generate_and_send_otp(email, purpose=OTPTypeEnum.TWO_FA):
             return {"message": "OTP for 2FA Generated Successfully"}
 
@@ -314,3 +312,39 @@ async def reset_password(token: str, new_password: str):
     except Exception as error:
         await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
         return f"Error resetting password \n Details: {error}"
+
+
+async def get_2fa_status(payload: dict) -> str:
+    """
+    Retrieves the current 2FA status for a user.
+    """
+    user_id = payload.get("user_id")
+    user = await User.get_or_none(id=user_id)
+    if user.two_fa_status:
+        return {"message": "You have 2FA enabled!"}
+    elif not user.two_fa_status:
+        return {"message": "You have 2FA disabled!"}
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Something wrong happened on our end!",
+    )
+
+
+async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
+    """
+    Toggles the 2FA status for a user and returns the new status.
+    """
+    user_id = payload.get("user_id")
+    user = await User.get_or_none(id=user_id)
+    if user:
+        user.two_fa_status = not user.two_fa_status
+        await user.save()
+        if user.two_fa_status:
+            return {"message": "You have enabled 2FA!"}
+        elif not user.two_fa_status:
+            return {"message": "You have disabled 2FA !"}
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Something wrong happened on our end!",
+    )

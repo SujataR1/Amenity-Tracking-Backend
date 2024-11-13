@@ -12,6 +12,8 @@ from Users.Methods import (
     verify_email_otp,
     request_password_reset_by_email,
     reset_password,
+    toggle_2fa_status,
+    get_2fa_status,
 )
 
 User_Router = APIRouter()
@@ -81,6 +83,37 @@ async def delete_user_endpoint(
     Endpoint to delete a user and blacklist the token.
     """
     return await delete_user(payload, authorization)
+
+
+@User_Router.get("/2fa/status", status_code=status.HTTP_200_OK)
+async def get_2fa_status_endpoint(payload=Depends(verify_jwt)):
+    """
+    Retrieves the current 2FA status for the authenticated user.
+    """
+    user_id = payload.get("user_id")
+    if user_id:
+        status = await get_2fa_status(user_id)
+        return {f"status"}
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Please login to view your 2FA status.",
+    )
+
+
+# Endpoint to toggle 2FA status
+@User_Router.patch("/2fa/toggle", status_code=status.HTTP_200_OK)
+async def toggle_2fa_status_endpoint(payload=Depends(verify_jwt)):
+    """
+    Toggles the 2FA status for the authenticated user.
+    """
+    user_id = payload.get("user_id")
+    if user_id:
+        new_status = await toggle_2fa_status(user_id)
+        return {"message": f"{new_status}"}
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="User not authenticated.",
+    )
 
 
 @User_Router.post("/2fa/verify", status_code=status.HTTP_200_OK)

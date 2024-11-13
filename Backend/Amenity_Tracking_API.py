@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from Database_and_ORM.Database_Connector import init_db, close_db
 from Users.Router import User_Router  # Import the user router
 from decouple import config
-from Methods import add_cors_middleware, add_api_key_middleware
+from fastapi.middleware.cors import CORSMiddleware
+from Methods import APIKeyMiddleware
 from contextlib import asynccontextmanager
 
 
@@ -19,9 +20,16 @@ async def lifespan(app: FastAPI):
 # Initialize the app with lifespan
 app = FastAPI(title="Amenity Tracking API", lifespan=lifespan)
 
-# Add middlewares
-add_cors_middleware(app)
-add_api_key_middleware(app)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins; customize as needed
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Apply APIKey middleware
+app.add_middleware(APIKeyMiddleware)
 
 
 # Global route
