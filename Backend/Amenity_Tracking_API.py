@@ -1,7 +1,7 @@
 # main.py
 from fastapi import FastAPI
 from Database_and_ORM.Database_Connector import init_db, close_db
-from Users.Router import User_Router  # Import the user router
+from Users.Router import User_Router
 from decouple import config
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware import Middleware

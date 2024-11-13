@@ -5,7 +5,7 @@ from decouple import config
 import jwt
 import random
 from datetime import datetime, timedelta
-import bcrypt
+from passlib.hash import bcrypt
 
 
 async def get_token_from_authorization_header_value(
