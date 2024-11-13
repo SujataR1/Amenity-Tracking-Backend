@@ -93,5 +93,5 @@ async def get_questionnaire() -> dict:
     """
     Fetches the full questionnaire from the QuestionnaireEnum.
     """
-    questionnaire = {int(key.name): key.value for key in QuestionnaireEnum}
+    questionnaire = {key.name: key.value for key in QuestionnaireEnum}
     return {"questionnaire": questionnaire}
