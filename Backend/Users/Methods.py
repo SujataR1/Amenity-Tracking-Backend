@@ -4,7 +4,7 @@ from Comms.Methods import send_email, get_email_content
 from tortoise.exceptions import IntegrityError, DoesNotExist
 import uuid
 from typing import Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decouple import config
 from fastapi import HTTPException, status
 from typing import Dict
@@ -212,7 +212,7 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
     existing_otp = await OTP.filter(user_id=user_id, purpose=purpose).first()
 
     # Check if OTP exists and is still valid
-    if existing_otp and existing_otp.expiry > datetime.utcnow():
+    if existing_otp and existing_otp.expiry > datetime.now(timezone.utc):
         otp_code = existing_otp.otp_code  # Use the existing OTP if valid
     else:
         # Generate a new random 6-digit OTP
@@ -229,7 +229,7 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
                 otp_code=otp_code,
                 user_id=user_id,
                 purpose=purpose,
-                expiration=datetime.utcnow()
+                expiration=datetime.now(timezone.utc)
                 + timedelta(minutes=10),  # OTP valid for 10 minutes
             )
             await otp_entry.save()

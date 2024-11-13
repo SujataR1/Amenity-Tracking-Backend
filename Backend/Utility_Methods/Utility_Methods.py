@@ -71,7 +71,7 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
 
     payload = {
         "user_id": user_id,
-        "exp": datetime.utcnow()
+        "exp": datetime.now(timezone.utc)
         + timedelta(minutes=expiration_duration),  # Token valid for 1 day
     }
     token = jwt.encode(payload, config("JWT_SECRET_STRING"), algorithm="HS256")
