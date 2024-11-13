@@ -9,7 +9,6 @@ from passlib.hash import bcrypt
 from uuid import UUID
 
 
-
 async def get_token_from_authorization_header_value(
     authorization_header_value: str,
 ):

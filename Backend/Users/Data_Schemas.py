@@ -2,10 +2,12 @@ from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
 from typing import Optional
 
-class RoleEnum (str, Enum):
+
+class RoleEnum(str, Enum):
     user = "user"
     admin = "admin"
-    
+
+
 class OTPTypeEnum(str, Enum):
     TWO_FA = "2FA"
     PASSWORD_RESET = "Password Reset"

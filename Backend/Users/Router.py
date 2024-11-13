@@ -178,11 +178,8 @@ async def request_password_reset(request_data: PasswordResetRequest):
     """
     Requests a password reset. Sends a reset token to the user's email.
     """
-    reset_token = await request_password_reset_by_email(request_data.email)
-    return {
-        "message": "Password reset token generated",
-        "reset_token": reset_token,
-    }
+    response = await request_password_reset_by_email(request_data.email)
+    return response
 
 
 @User_Router.post(
