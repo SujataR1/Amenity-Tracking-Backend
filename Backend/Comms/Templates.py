@@ -3,8 +3,9 @@ email_templates = {
         "subject": "Password Reset Request for {username}",
         "body": (
             "Hello {username},\n\n"
-            "You requested a password reset. Click the link below to reset your password:\n"
+            "You requested a password reset. Click the link below to reset your password.:\n"
             "{reset_link}\n\n"
+            "The link will be valid for 30 mins \n\n"
             "If you did not request this, please ignore this email."
         ),
     },
@@ -13,7 +14,7 @@ email_templates = {
         "body": (
             "Hi {username},\n\n"
             "Your 2FA code is: {otp_code}\n\n"
-            "Please enter this code to complete your login process."
+            "Please enter this code to complete your login process. This will be valid for 10 minutes"
         ),
     },
     "email_verification": {
