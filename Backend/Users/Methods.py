@@ -43,7 +43,7 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
         await user.save()
         return {"message": "Account succesfully created!"}
     except IntegrityError:
-        return {"error": "A user with this email already exists."}
+        return {"error": "A user with same details already exists."}
 
 
 async def authenticate_user(email: str, password: str, otp_code: int = None):
