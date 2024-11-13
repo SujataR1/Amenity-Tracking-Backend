@@ -293,14 +293,14 @@ async def request_password_reset_by_email(email: str) -> str:
     # Generate reset token if user exists
     reset_token = await create_jwt(user.id, expiration_duration=30)
     reset_link = (
-        f"http://{config("PASSWORD_RESET_LANDING_PAGE_URL")}/{reset_token}"
+        f"{config("PASSWORD_RESET_LANDING_PAGE_URL")}/{reset_token}"
     )
-     
+
     user_id = user.id
 
     values = {"username": f"{user_id}", "reset_link": f"{reset_link}"}
 
-    content = await get_email_content("password_reset")
+    content = await get_email_content("password_reset", **values)
 
     # Send the email
     email_sent = await send_email(

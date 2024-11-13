@@ -6,6 +6,8 @@ import jwt
 import random
 from datetime import datetime, timedelta
 from passlib.hash import bcrypt
+from uuid import UUID
+
 
 
 async def get_token_from_authorization_header_value(
@@ -65,6 +67,9 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
     """
     Generates a JWT token containing the user ID and expiration date.
     """
+    if isinstance(user_id, UUID):
+        user_id = str(user_id)
+
     payload = {
         "user_id": user_id,
         "exp": datetime.utcnow()
