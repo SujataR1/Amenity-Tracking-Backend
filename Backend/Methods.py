@@ -14,7 +14,7 @@ async def shutdown_event():
     await close_db()
 
 
-class APIKeyMiddleware(BaseHTTPMiddleware):
+class VerifyAPIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """
         Middleware to check for a valid API key in the request headers.
