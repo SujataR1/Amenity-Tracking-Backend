@@ -72,15 +72,11 @@ async def logout_user_endpoint(
 
 
 @User_Router.patch("/update")
-async def update_user_endpoint(
-    update_data: UserUpdate, payload=Depends(verify_jwt)
-):
+async def update_user_endpoint(update_data: UserUpdate, payload=Depends(verify_jwt)):
     """
     Updates user details based on the user ID extracted from JWT.
     """
-    return await update_user(
-        update_data.model_dump(exclude_unset=True), payload
-    )
+    return await update_user(update_data.model_dump(exclude_unset=True), payload)
 
 
 @User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
@@ -126,15 +122,11 @@ async def toggle_2fa_status_endpoint(
 
 
 @User_Router.post("/2fa/verify", status_code=status.HTTP_200_OK)
-async def verify_2fa_login_endpoint(
-    response: Response, two_fa_data: TwoFARequest
-):
+async def verify_2fa_login_endpoint(response: Response, two_fa_data: TwoFARequest):
     """
     Verifies the OTP for 2FA and, if valid, logs the user in by returning a JWT token.
     """
-    token, user = await verify_2fa_and_login(
-        two_fa_data.email, two_fa_data.otp_code
-    )
+    token, user = await verify_2fa_and_login(two_fa_data.email, two_fa_data.otp_code)
     response.headers["Authorization"] = f"Bearer {token}"
     return {
         "message": f"2FA verification successful. User {user.name} is now logged in."
@@ -178,9 +170,7 @@ async def request_password_reset(request_data: PasswordResetRequest):
     return response
 
 
-@User_Router.post(
-    "/password-reset/confirm/{token}", status_code=status.HTTP_200_OK
-)
+@User_Router.post("/password-reset/confirm/{token}", status_code=status.HTTP_200_OK)
 async def reset_password_endpoint(request_data: PasswordResetConfirm):
     """
     Confirms the password reset by validating the reset token and updating the user's password.

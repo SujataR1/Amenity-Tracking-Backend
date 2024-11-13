@@ -33,9 +33,7 @@ async def create_questionnaire_answer_endpoint(
     """
     user_id = payload.get("user_id")
     try:
-        await create_questionnaire_answers(
-            user_id=user_id, answer_data=answer_data
-        )
+        await create_questionnaire_answers(user_id=user_id, answer_data=answer_data)
         return {"message": "Questionnaire answers submitted successfully"}
     except Exception as e:
         raise HTTPException(
@@ -53,9 +51,7 @@ async def update_questionnaire_answer_endpoint(
     """
     user_id = payload.get("user_id")
     try:
-        await update_questionnaire_answers(
-            user_id=user_id, answer_data=answer_data
-        )
+        await update_questionnaire_answers(user_id=user_id, answer_data=answer_data)
         return {"message": "Questionnaire answers updated successfully"}
     except DoesNotExist:
         raise HTTPException(
