@@ -40,7 +40,7 @@ class Blacklisted_Tokens(Model):
 
 class OTP(Model):
     otp_code = fields.CharField(
-        max_length=6, pk=True
+        max_length=8, pk=True
     )  # Primary key for uniqueness
     user = fields.ForeignKeyField(
         "models.User", related_name="otps", on_delete="CASCADE"

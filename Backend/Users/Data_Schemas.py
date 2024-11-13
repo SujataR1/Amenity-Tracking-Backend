@@ -61,7 +61,7 @@ class Toggle2FARequest(BaseModel):
 
 class TwoFARequest(BaseModel):
     email: EmailStr
-    otp_code: int
+    otp_code: str
 
 
 class OTPRequest(BaseModel):

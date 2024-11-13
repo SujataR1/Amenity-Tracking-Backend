@@ -4,7 +4,7 @@ from Database_and_ORM.Database_Models import Blacklisted_Tokens, OTP
 from decouple import config
 import jwt
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from passlib.hash import bcrypt
 from uuid import UUID
 
@@ -79,7 +79,7 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
 
 
 async def verify_otp(
-    user_id: str, otp_code: int, purpose: OTPTypeEnum
+    user_id: str, otp_code: str, purpose: OTPTypeEnum
 ) -> bool:
     """
     Verifies an OTP for a specific user and purpose. If valid, deletes the OTP.
@@ -89,7 +89,7 @@ async def verify_otp(
     )
 
     # Check OTP existence and expiration
-    if otp_entry and otp_entry.expiration > datetime.utcnow():
+    if otp_entry and otp_entry.expiration > datetime.now(timezone.utc):
         # OTP is valid; delete it after successful verification
         await otp_entry.delete()
         return True
@@ -103,3 +103,7 @@ async def verify_otp(
 async def verify_user_password(entered_password, user_password):
     verified = bcrypt.verify(entered_password, user_password)
     return verified
+
+
+async def get_hashed_password(password):
+    return str(bcrypt.hash(password))

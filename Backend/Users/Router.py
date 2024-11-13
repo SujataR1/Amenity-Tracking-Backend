@@ -45,18 +45,14 @@ async def create_user_endpoint(user: UserCreate):
 
 
 @User_Router.post("/login", status_code=status.HTTP_200_OK)
-async def login_user(
-    response: Response, login_data: LoginData, two_fa: TwoFARequest
-):
+async def login_user(response: Response, login_data: LoginData):
     """
     Login endpoint that validates user credentials. If 2FA is enabled, requires OTP.
     """
     try:
         user, token_or_message = await authenticate_user(
-            login_data.email, login_data.password, otp_code=two_fa.otp_code
+            email=login_data.email, password=login_data.password
         )
-        if isinstance(token_or_message, dict):  # If OTP generation message
-            return token_or_message
         response.headers["Authorization"] = f"Bearer {token_or_message}"
         return {"message": f"User {user.name} has successfully logged in"}
     except HTTPException as e:
