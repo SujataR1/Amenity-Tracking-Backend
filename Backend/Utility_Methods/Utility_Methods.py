@@ -95,6 +95,7 @@ async def verify_otp(
         detail="Invalid or expired OTP",
     )
 
-async def verify_user_password (entered_password, user_password):
+
+async def verify_user_password(entered_password, user_password):
     verified = bcrypt.verify(entered_password, user_password)
     return verified
