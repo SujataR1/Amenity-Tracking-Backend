@@ -113,7 +113,7 @@ async def get_hashed_password(password):
     return str(bcrypt.hash(password))
 
 
-def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
+async def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
     """
     Encodes the file or all files in the directory at the given path to Base64 with MIME type.
     If the path is a file, returns a Base64 string.
