@@ -213,7 +213,7 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
     existing_otp = await OTP.filter(user_id=user_id, purpose=purpose).first()
 
     # Check if OTP exists and is still valid
-    if existing_otp and existing_otp.expiry > datetime.now(timezone.utc):
+    if existing_otp and existing_otp.expiration > datetime.now(timezone.utc):
         otp_code = existing_otp.otp_code  # Use the existing OTP if valid
     else:
         # Generate a new random 6-digit OTP
