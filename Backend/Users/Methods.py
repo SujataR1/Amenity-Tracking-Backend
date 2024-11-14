@@ -273,26 +273,31 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
 async def get_user_data(payload: dict) -> dict:
     """
     Retrieves user data by user_id, excluding the password field.
-    Includes profile picture as Base64 encoded string if available.
     """
     user_id = payload.get("user_id")
     user = await User.get_or_none(id=user_id)
-
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
 
-    # Convert user model to dictionary and exclude password
-    user_data = user.to_dict()
-    user_data.pop("password", None)
+    # Convert user instance to a dictionary excluding private/internal attributes
+    user_data = {
+        field: value
+        for field, value in user.__dict__.items()
+        if not field.startswith("_")
+    }
 
-    # Fetch and add Base64 encoded profile picture
-    profile_picture_response = await get_profile_picture(user_id=user_id)
-    user_data["profile_picture"] = profile_picture_response.get(
-        "profile_picture", None
-    )
+    # Remove password and include profile picture as base64
+    user_data.pop("password", None)
+    if user_data.get("profile_picture_path"):
+        user_data["profile_picture"] = await encode_path_to_base64(
+            user_data["profile_picture_path"]
+        )
+    else:
+        user_data["profile_picture"] = None
+    user_data.pop("profile_picture_path", None)  # Remove the path field
 
     return user_data
 
