@@ -213,12 +213,12 @@ async def get_user_profile(payload=Depends(verify_jwt)):
     "/profile-picture/upload", status_code=status.HTTP_201_CREATED
 )
 async def create_profile_picture(
-    payload=Depends(verify_jwt), file: UploadFile = File(...)
+    payload: dict = Depends(verify_jwt), file: UploadFile = File(...)
 ):
     """
     Endpoint to upload a profile picture for a user.
     """
-    file_path = await upload_profile_picture(file, payload)
+    file_path = await upload_profile_picture(file=file, payload=payload)
     if file_path:
         return {"message": "Profile picture uploaded successfully"}
     else:

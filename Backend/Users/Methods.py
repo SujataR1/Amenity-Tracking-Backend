@@ -291,6 +291,7 @@ async def get_user_data(payload: dict) -> dict:
 
     # Remove password and include profile picture as base64
     user_data.pop("password", None)
+    user_data.pop("id", None)
     if user_data.get("profile_picture_path"):
         user_data["profile_picture"] = await encode_path_to_base64(
             user_data["profile_picture_path"]
