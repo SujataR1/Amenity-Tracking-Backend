@@ -26,6 +26,7 @@ middlewares = [
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Authorization", "authorization"],
     ),
     # Middleware(RateLimitMiddleware),
     Middleware(VerifyAPIKeyMiddleware),
