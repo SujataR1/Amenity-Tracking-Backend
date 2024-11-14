@@ -13,7 +13,7 @@ from Utility_Methods.Utility_Methods import (
     verify_user_password,
     get_hashed_password,
     encode_path_to_base64,
-    generate_random_otp
+    generate_random_otp,
 )
 import os
 
@@ -70,7 +70,10 @@ async def authenticate_user(email: str, password: str, otp_code: str = None):
         )
 
     # Generate JWT token if 2FA is not enabled or OTP verification is successful
-    token = await create_jwt(str(user.id), expiration_duration=int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")))
+    token = await create_jwt(
+        str(user.id),
+        expiration_duration=int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")),
+    )
     return user, token
 
 
@@ -174,7 +177,12 @@ async def verify_2fa_and_login(email: str, otp_code: str):
 
     if verified:
         # Generate JWT token
-        token = await create_jwt(user_id, expiration_duration=int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")))
+        token = await create_jwt(
+            user_id,
+            expiration_duration=int(
+                config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")
+            ),
+        )
         response = token, user
     else:
         raise HTTPException(
@@ -208,7 +216,9 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
         otp_code = existing_otp.otp_code  # Use the existing OTP if valid
     else:
         # Generate a new random 6-digit OTP
-        otp_code = await generate_random_otp() # Example of a 6-digit random OTP using UUID
+        otp_code = (
+            await generate_random_otp()
+        )  # Example of a 6-digit random OTP using UUID
 
         # Invalidate any existing OTPs for this user and purpose
         await OTP.filter(user_id=user_id, purpose=purpose).delete()
