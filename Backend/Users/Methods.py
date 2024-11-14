@@ -425,6 +425,22 @@ async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
     )
     os.makedirs(directory, exist_ok=True)
 
+    if file.content_type not in ["image/jpeg", "image/png", "image/jpg"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPEG and PNG images are allowed.",
+        )
+
+    # Check file size (limit 500kB)
+    file_size = await file.read()  # read content to check size
+    if len(file_size) > config("MAXIMUM_IMAGE_SIZE") * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size should not exceed {config("MAXIMUM_IMAGE_SIZE")} mBs.",
+        )
+
+    await file.seek(0)
+
     # Create the file path
     file_path = os.path.join(directory, f"{user_id}_{file.filename}")
 
