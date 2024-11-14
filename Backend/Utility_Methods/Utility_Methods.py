@@ -13,6 +13,13 @@ from typing import Union, Dict
 from mimetypes import guess_type
 
 
+async def get_token_from_authorization_header_value(
+    authorization_header_value: str,
+):
+    token = authorization_header_value.split(" ")[1]
+    return token
+
+
 async def decode_jwt(token):
     payload = jwt.decode(
         token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
@@ -31,7 +38,8 @@ async def verify_jwt(authorization: str = Header(None)):
         )
 
     try:
-        payload = await decode_jwt(authorization)
+        token = await get_token_from_authorization_header_value(authorization)
+        payload = await decode_jwt(token)
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -43,7 +51,7 @@ async def verify_jwt(authorization: str = Header(None)):
         )
 
     # Check if the token is blacklisted
-    if await Blacklisted_Tokens.get_or_none(Blacklisted_Tokens=authorization):
+    if await Blacklisted_Tokens.get_or_none(Blacklisted_Tokens=token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="You have already logged out. Please log in again.",

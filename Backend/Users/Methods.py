@@ -14,6 +14,7 @@ from Utility_Methods.Utility_Methods import (
     get_hashed_password,
     encode_path_to_base64,
     generate_random_otp,
+    get_token_from_authorization_header_value,
 )
 import os
 
@@ -83,7 +84,10 @@ async def logout_user(authorization: str, payload: dict):
     """
     if payload:
         try:
-            await Blacklisted_Tokens.create(Blacklisted_Tokens=authorization)
+            token = await get_token_from_authorization_header_value(
+                authorization
+            )
+            await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
             return {"message": "Successfully logged out"}
         except Exception as e:
             raise HTTPException(
@@ -161,7 +165,8 @@ async def delete_user(payload: dict, authorization: str):
     await user.delete()
 
     # Blacklist the token
-    await Blacklisted_Tokens.create(Blacklisted_Tokens=authorization)
+    token = await get_token_from_authorization_header_value(authorization)
+    await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
 
     return {"message": "User deleted successfully and token blacklisted"}
 

@@ -63,7 +63,7 @@ async def login_user(response: Response, login_data: LoginData):
         user, token_or_message = await authenticate_user(
             email=login_data.email, password=login_data.password
         )
-        response.headers["Authorization"] = f"{token_or_message}"
+        response.headers["Authorization"] = f"Bearer {token_or_message}"
         return {"message": f"User {user.name} has successfully logged in"}
     except HTTPException as e:
         raise e
@@ -145,7 +145,7 @@ async def verify_2fa_login_endpoint(
     token, user = await verify_2fa_and_login(
         two_fa_data.email, two_fa_data.otp_code
     )
-    response.headers["Authorization"] = f"{token}"
+    response.headers["Authorization"] = f"Bearer {token}"
     return {
         "message": f"2FA verification successful. User {user.name} is now logged in."
     }
