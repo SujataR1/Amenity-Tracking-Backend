@@ -6,8 +6,7 @@ from fastapi.responses import StreamingResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from decouple import config
 import traceback
-from typing import Optional, Any, Callable
-from io import BytesIO
+from typing import Optional, Callable, Union
 import asyncio
 
 
@@ -45,8 +44,8 @@ class VerifyAPIKeyMiddleware(BaseHTTPMiddleware):
 async def log_api_activity(
     request: Request,
     response_status: Optional[int] = None,
-    response_time: Optional[float] = None,
-    error: Optional[str] = None,
+    response_time: Optional[int] = None,  # Integer value in milliseconds
+    error: Optional[str] = None,  # Capture error as a string
     error_location: Optional[str] = None,
 ):
     """
@@ -55,12 +54,10 @@ async def log_api_activity(
     endpoint_hit = request.url.path
     requesting_ip = request.client.host
 
-    # Capture request details
+    # Capture selected request details
     request_data = {
-        "method": request.method,
-        "url": str(request.url),
         "headers": dict(request.headers),
-        "query_params": dict(request.query_params),
+        "user_agent": request.headers.get("User-Agent"),
     }
 
     # Capture request body if possible
@@ -75,26 +72,30 @@ async def log_api_activity(
         else request_body
     )
 
-    # Prepare response data
+    # Prepare response data, ensuring defaults of 0 for non-nullable fields
     response_data = {
-        "status_code": response_status,
+        "status_code": response_status or 0,
     }
+
+    # Ensure error and error_location have default values for non-nullable fields
+    error_message = error
+    error_location = error_location
 
     # Log entry creation (replace with actual database logging logic)
     await APIActivityLog.create(
-        requesting_ip=requesting_ip,
+        requesting_ip=requesting_ip or "Unavailable",
         request=request_data,
         response=response_data,
         endpoint_hit=endpoint_hit,
-        time_taken=response_time * 1000 if response_time else None,
+        time_taken=response_time or 0,  # Default to 0 if None
         time_requested=request.state.time_requested,
         time_responded=datetime.now(timezone.utc),
-        error=error,
+        error=error_message,
         error_location=error_location,
     )
 
 
-# Middleware class to log API activity and capture the response status and time
+# Middleware class to log API activity and capture response status and time
 class APIActivityLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable
@@ -109,9 +110,11 @@ class APIActivityLoggingMiddleware(BaseHTTPMiddleware):
             # Call the next middleware or endpoint handler
             response = await call_next(request)
 
-            # Capture response status code and calculate response time
+            # Capture response status code and calculate response time in milliseconds
             status_code = response.status_code
-            response_time = asyncio.get_event_loop().time() - start_time
+            response_time = int(
+                (asyncio.get_event_loop().time() - start_time) * 1000
+            )  # Convert to milliseconds
 
             # Log API activity
             await log_api_activity(
@@ -121,7 +124,7 @@ class APIActivityLoggingMiddleware(BaseHTTPMiddleware):
             )
 
         except Exception as e:
-            # Log the exception with traceback
+            # Log other exceptions with traceback
             error_location = traceback.format_exc()
             await log_api_activity(
                 request, error=str(e), error_location=error_location
