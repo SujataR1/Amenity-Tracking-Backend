@@ -1,4 +1,13 @@
-from fastapi import APIRouter, HTTPException, status, Response, Header, Depends
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    status,
+    Response,
+    Header,
+    Depends,
+    File,
+    UploadFile,
+)
 from pydantic import BaseModel
 from Utility_Methods.Utility_Methods import verify_jwt
 from Users.Data_Schemas import (
@@ -25,6 +34,8 @@ from Users.Methods import (
     toggle_2fa_status,
     get_2fa_status,
     get_user_data,
+    upload_profile_picture,
+    get_profile_picture,
 )
 
 User_Router = APIRouter()
@@ -196,3 +207,38 @@ async def get_user_profile(payload=Depends(verify_jwt)):
     """
     user_data = await get_user_data(payload)
     return {"user_data": user_data}
+
+
+@User_Router.post(
+    "/profile-picture/upload", status_code=status.HTTP_201_CREATED
+)
+async def create_profile_picture(
+    payload=Depends(verify_jwt), file: UploadFile = File(...)
+):
+    """
+    Endpoint to upload a profile picture for a user.
+    """
+    file_path = await upload_profile_picture(file, payload)
+    if file_path:
+        return {"message": "Profile picture uploaded successfully"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload profile picture. Something went wrong on our end.",
+        )
+
+
+@User_Router.get("/profile-picture", status_code=status.HTTP_200_OK)
+async def get_profile_picture_endpoint(payload=Depends(verify_jwt)):
+    """
+    Endpoint to fetch the Base64 encoded profile picture of a user.
+    """
+    profile_picture_response = await get_profile_picture(payload)
+
+    if "error" in profile_picture_response:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=profile_picture_response["error"],
+        )
+
+    return {"profile_picture": profile_picture_response["profile_picture"]}
