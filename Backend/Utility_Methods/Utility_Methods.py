@@ -21,7 +21,9 @@ async def get_token_from_authorization_header_value(
 
 
 async def decode_jwt(token):
-    payload = jwt.decode(token, config("JWT_SECRET_STRING"), algorithms=["HS256"])
+    payload = jwt.decode(
+        token, config("JWT_SECRET_STRING"), algorithms=["HS256"]
+    )
     return payload
 
 
@@ -80,7 +82,9 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
     return token
 
 
-async def verify_otp(user_id: str, otp_code: str, purpose: OTPTypeEnum) -> bool:
+async def verify_otp(
+    user_id: str, otp_code: str, purpose: OTPTypeEnum
+) -> bool:
     """
     Verifies an OTP for a specific user and purpose. If valid, deletes the OTP.
     """
@@ -143,7 +147,9 @@ async def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
                     continue
 
                 with open(file_path, "rb") as file:
-                    encoded_string = base64.b64encode(file.read()).decode("utf-8")
+                    encoded_string = base64.b64encode(file.read()).decode(
+                        "utf-8"
+                    )
                     encoded_files[file_name] = (
                         f"data:{mime_type};base64,{encoded_string}"
                     )
