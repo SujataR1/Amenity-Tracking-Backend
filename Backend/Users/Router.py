@@ -82,15 +82,11 @@ async def logout_user_endpoint(
 
 
 @User_Router.patch("/update")
-async def update_user_endpoint(
-    update_data: UserUpdate, payload=Depends(verify_jwt)
-):
+async def update_user_endpoint(update_data: UserUpdate, payload=Depends(verify_jwt)):
     """
     Updates user details based on the user ID extracted from JWT.
     """
-    return await update_user(
-        update_data.model_dump(exclude_unset=True), payload
-    )
+    return await update_user(update_data.model_dump(exclude_unset=True), payload)
 
 
 @User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
@@ -136,15 +132,11 @@ async def toggle_2fa_status_endpoint(
 
 
 @User_Router.post("/2fa/verify", status_code=status.HTTP_200_OK)
-async def verify_2fa_login_endpoint(
-    response: Response, two_fa_data: TwoFARequest
-):
+async def verify_2fa_login_endpoint(response: Response, two_fa_data: TwoFARequest):
     """
     Verifies the OTP for 2FA and, if valid, logs the user in by returning a JWT token.
     """
-    token, user = await verify_2fa_and_login(
-        two_fa_data.email, two_fa_data.otp_code
-    )
+    token, user = await verify_2fa_and_login(two_fa_data.email, two_fa_data.otp_code)
     response.headers["Authorization"] = f"Bearer {token}"
     return {
         "message": f"2FA verification successful. User {user.name} is now logged in."
@@ -209,9 +201,7 @@ async def get_user_profile(payload=Depends(verify_jwt)):
     return {"user_data": user_data}
 
 
-@User_Router.post(
-    "/profile-picture/upload", status_code=status.HTTP_201_CREATED
-)
+@User_Router.post("/profile-picture/upload", status_code=status.HTTP_201_CREATED)
 async def create_profile_picture(
     payload: dict = Depends(verify_jwt), file: UploadFile = File(...)
 ):

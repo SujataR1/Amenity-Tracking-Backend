@@ -79,8 +79,7 @@ async def get_questionnaire_answers(user_id: int) -> dict:
 
         # Dynamically retrieve answers based on the enum
         answers_data = {
-            field.value: getattr(answers, field.value)
-            for field in QuestionnaireFields
+            field.value: getattr(answers, field.value) for field in QuestionnaireFields
         }
 
         return {"user_id": user_id, "answers": answers_data}
