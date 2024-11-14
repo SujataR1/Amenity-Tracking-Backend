@@ -97,11 +97,11 @@ async def verify_otp(
         # OTP is valid; delete it after successful verification
         await otp_entry.delete()
         return True
-
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid or expired OTP",
-    )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP",
+        )
 
 
 async def verify_user_password(entered_password, user_password):

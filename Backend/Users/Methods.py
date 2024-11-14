@@ -176,14 +176,14 @@ async def verify_2fa_and_login(email: str, otp_code: str):
     """
     # Retrieve the OTP entry for the user and 2FA purpose
     user = await User.get_or_none(email=email)
-    user_name = user.name
+    user_id = user.id
     verified = await verify_otp(
-        user_name, otp_code, purpose=OTPTypeEnum.TWO_FA
+        user_id, otp_code, purpose=OTPTypeEnum.TWO_FA
     )
 
     if verified:
         # Generate JWT token
-        token = await create_jwt(user_name, expiration_duration=1440)
+        token = await create_jwt(user_id, expiration_duration=1440)
         response = token, user
     else:
         raise HTTPException(
@@ -217,7 +217,7 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
         otp_code = existing_otp.otp_code  # Use the existing OTP if valid
     else:
         # Generate a new random 6-digit OTP
-        otp_code = str(uuid.uuid4().int)[
+        otp_code = str(uuid.uuid4())[
             :6
         ]  # Example of a 6-digit random OTP using UUID
 
