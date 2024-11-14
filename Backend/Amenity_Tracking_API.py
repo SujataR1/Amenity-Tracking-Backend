@@ -6,7 +6,7 @@ from Questionnaire.Router import Questionnaire_Router
 from decouple import config
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware import Middleware
-from Methods import VerifyAPIKeyMiddleware
+from Methods import VerifyAPIKeyMiddleware, APIActivityLoggingMiddleware
 from contextlib import asynccontextmanager
 
 
@@ -28,9 +28,8 @@ middlewares = [
         allow_headers=["*"],
         expose_headers=["Authorization", "authorization"],
     ),
-    # Middleware(RateLimitMiddleware),
     Middleware(VerifyAPIKeyMiddleware),
-    # Middleware(APITrackingMiddleware),
+    Middleware(APIActivityLoggingMiddleware),
 ]
 
 app = FastAPI(

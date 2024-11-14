@@ -44,7 +44,7 @@ async def create_questionnaire_answer_endpoint(
         )
 
 
-@Questionnaire_Router.put("/answer", status_code=status.HTTP_200_OK)
+@Questionnaire_Router.patch("/answer", status_code=status.HTTP_200_OK)
 async def update_questionnaire_answer_endpoint(
     answer_data: QuestionnaireAnswerUpdate, payload: dict = Depends(verify_jwt)
 ):

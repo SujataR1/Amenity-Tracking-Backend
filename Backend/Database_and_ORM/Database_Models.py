@@ -97,3 +97,39 @@ class QuestionnaireAnswers(Model):
 
     class Meta:
         table = "questionnaire_answers"
+
+
+class APIActivityLog(Model):
+    """
+    Model to track API activity details such as IP address, request, response,
+    endpoint, timings, and errors.
+    """
+
+    id = fields.UUIDField(pk=True)
+    requesting_ip = fields.CharField(
+        max_length=45
+    )  # Supports both IPv4 and IPv6
+    request = fields.JSONField()  # Stores request data in JSON format
+    response = fields.JSONField(
+        null=True
+    )  # Stores response data in JSON format, can be null if there's an error
+    endpoint_hit = fields.CharField(
+        max_length=255
+    )  # The endpoint that was accessed
+    time_taken = (
+        fields.FloatField()
+    )  # Time taken to process the request, in seconds
+    time_requested = fields.DatetimeField(
+        auto_now_add=True
+    )  # Time the request was received
+    time_responded = fields.DatetimeField(
+        null=True
+    )  # Time the response was sent, can be null if an error occurs
+    error = fields.TextField(null=True)  # Error message, if any
+    error_location = fields.CharField(
+        max_length=255, null=True
+    )  # Location of the error, e.g., filename and line number
+
+    class Meta:
+        table = "api_activity_log"
+        ordering = ["-time_requested"]
