@@ -4,7 +4,7 @@ email_templates = {
         "body": (
             "Hello {username},\n\n"
             "You requested a password reset. Click the link below to reset your password.:\n"
-            "{reset_link}\n\n"
+            "{otp_code}\n\n"
             "The link will be valid for 30 mins \n\n"
             "If you did not request this, please ignore this email."
         ),

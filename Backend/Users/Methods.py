@@ -253,6 +253,8 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
         content = await get_email_content("2fa_verification", **values)
     elif purpose == OTPTypeEnum.MAIL_VERIFICATION:
         content = await get_email_content("email_verification", **values)
+    elif purpose == OTPTypeEnum.PASSWORD_RESET:
+        content = await get_email_content("password_reset", **values)
 
     # Send the email
     email_sent = await send_email(
