@@ -9,7 +9,6 @@ from decouple import config
 from fastapi import HTTPException, status, UploadFile
 from typing import Dict
 from Utility_Methods.Utility_Methods import (
-    get_token_from_authorization_header_value,
     create_jwt,
     verify_otp,
     verify_user_password,
@@ -81,10 +80,7 @@ async def logout_user(authorization: str, payload: dict):
     """
     if payload:
         try:
-            token = await get_token_from_authorization_header_value(
-                authorization
-            )
-            await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+            await Blacklisted_Tokens.create(Blacklisted_Tokens=authorization)
             return {"message": "Successfully logged out"}
         except Exception as e:
             raise HTTPException(
@@ -162,10 +158,7 @@ async def delete_user(payload: dict, authorization: str):
     await user.delete()
 
     # Blacklist the token
-    token = await get_token_from_authorization_header_value(
-        authorization
-    )  # Extract the token part from "Bearer <token>"
-    await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+    await Blacklisted_Tokens.create(Blacklisted_Tokens=authorization)
 
     return {"message": "User deleted successfully and token blacklisted"}
 
