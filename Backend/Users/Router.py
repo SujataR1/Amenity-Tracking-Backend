@@ -178,14 +178,16 @@ async def request_password_reset(request_data: PasswordResetRequest):
     return response
 
 
-@User_Router.post(
-    "/password-reset/confirm/{token}", status_code=status.HTTP_200_OK
-)
+@User_Router.post("/password-reset/confirm", status_code=status.HTTP_200_OK)
 async def reset_password_endpoint(request_data: PasswordResetConfirm):
     """
     Confirms the password reset by validating the reset token and updating the user's password.
     """
-    return await reset_password(request_data.token, request_data.new_password)
+    return await reset_password(
+        email=request_data.email,
+        new_password=request_data.new_password,
+        otp_code=request_data.otp_code,
+    )
 
 
 @User_Router.get("/profile", status_code=status.HTTP_200_OK)

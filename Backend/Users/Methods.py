@@ -320,47 +320,48 @@ async def request_password_reset_by_email(email: str) -> str:
             detail="No account found with the provided email.",
         )
 
-    # Generate reset token if user exists
-    reset_token = await create_jwt(user.id, expiration_duration=30)
-    reset_link = f"{config("PASSWORD_RESET_LANDING_PAGE_URL")}/{reset_token}"
-
-    user_name = str(user.name)
-
-    values = {"username": f"{user_name}", "reset_link": f"{reset_link}"}
-
-    content = await get_email_content("password_reset", **values)
-
-    # Send the email
-    email_sent = await send_email(
-        to_email=email, subject=content["subject"], body=content["body"]
-    )
-    if email_sent:
-        return {"message": "Password reset email sent successfully."}
-    else:
+    # Generate and send OTP using the existing method
+    try:
+        result = await generate_and_send_otp(
+            email, purpose=OTPTypeEnum.PASSWORD_RESET
+        )
+        return result  # Result from `generate_and_send_otp`
+    except HTTPException as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unable to send the password reset link",
+            detail="Error generating or sending the OTP",
         )
 
 
-async def reset_password(token: str, new_password: str):
-    payload = await decode_jwt(token)
-    user_id = payload.get("user_id")
-    user = await User.get_or_none(id=user_id)
+async def reset_password(email: str, otp_code: str, new_password: str):
+    user = await User.get_or_none(email=email)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User with this email was not found.",
         )
 
-    # Hash the new password and update the user's password
-    user.password = await get_hashed_password(new_password)
+    # Verify OTP using the existing verify_otp method
+    verified = await verify_otp(
+        otp_code=otp_code, user_id=user.id, purpose=OTPTypeEnum.PASSWORD_RESET
+    )
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP for password reset.",
+        )
+
+    # Update password if OTP is verified
     try:
+        hashed_password = await get_hashed_password(new_password)
+        user.password = hashed_password
         await user.save()
-        await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
         return {"message": "Password has been reset successfully."}
-    except Exception as error:
-        await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-        return f"Error resetting password \n Details: {error}"
+    except:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong on our end",
+        )
 
 
 async def get_2fa_status(payload: dict) -> str:

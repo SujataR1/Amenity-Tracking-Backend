@@ -74,5 +74,6 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(BaseModel):
-    token: str
+    email: EmailStr
     new_password: str
+    otp_code: str
