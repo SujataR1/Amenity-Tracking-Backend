@@ -81,9 +81,7 @@ async def logout_user(authorization: str, payload: dict):
     """
     if payload:
         try:
-            token = await get_token_from_authorization_header_value(
-                authorization
-            )
+            token = await get_token_from_authorization_header_value(authorization)
             await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
             return {"message": "Successfully logged out"}
         except Exception as e:
@@ -215,9 +213,7 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
         otp_code = existing_otp.otp_code  # Use the existing OTP if valid
     else:
         # Generate a new random 6-digit OTP
-        otp_code = str(uuid.uuid4())[
-            :6
-        ]  # Example of a 6-digit random OTP using UUID
+        otp_code = str(uuid.uuid4())[:6]  # Example of a 6-digit random OTP using UUID
 
         # Invalidate any existing OTPs for this user and purpose
         await OTP.filter(user_id=user_id, purpose=purpose).delete()
@@ -310,9 +306,7 @@ async def verify_email_otp(payload: Dict, otp_code: str) -> bool:
     user_id = payload.get("user_id")
     user = await User.get(id=user_id)
 
-    if await verify_otp(
-        otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
-    ):
+    if await verify_otp(otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION):
         # Update the user's email_verified status
         user.email_verified = True
         await user.save()
@@ -337,9 +331,7 @@ async def request_password_reset_by_email(email: str) -> str:
 
     # Generate and send OTP using the existing method
     try:
-        result = await generate_and_send_otp(
-            email, purpose=OTPTypeEnum.PASSWORD_RESET
-        )
+        result = await generate_and_send_otp(email, purpose=OTPTypeEnum.PASSWORD_RESET)
         return result  # Result from `generate_and_send_otp`
     except HTTPException as e:
         raise HTTPException(
@@ -466,9 +458,7 @@ async def get_profile_picture(payload: dict) -> dict:
 
     # Convert profile picture to Base64 using the utility method
     try:
-        profile_picture_base64 = encode_path_to_base64(
-            user.profile_picture_path
-        )
+        profile_picture_base64 = encode_path_to_base64(user.profile_picture_path)
         return {"profile_picture": profile_picture_base64}
     except Exception as e:
         raise HTTPException(
