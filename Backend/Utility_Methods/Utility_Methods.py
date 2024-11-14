@@ -3,7 +3,7 @@ from Users.Data_Schemas import OTPTypeEnum
 from Database_and_ORM.Database_Models import Blacklisted_Tokens, OTP
 from decouple import config
 import jwt
-import random
+import uuid
 from datetime import datetime, timedelta, timezone
 from passlib.hash import bcrypt
 from uuid import UUID
@@ -52,9 +52,11 @@ async def verify_jwt(authorization: str = Header(None)):
     return payload  # Return the decoded payload if the token is valid
 
 
-async def generate_random_otp(length: int = 6) -> int:
-    """Generates a random numeric OTP of specified length."""
-    return "".join([str(random.randint(0, 9)) for _ in range(length)])
+async def generate_random_otp() -> str:
+    """Generates a random OTP of specified length."""
+    return str(uuid.uuid4())[
+            :int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS"))
+        ]
 
 
 async def create_jwt(user_id: str, expiration_duration: int) -> str:
