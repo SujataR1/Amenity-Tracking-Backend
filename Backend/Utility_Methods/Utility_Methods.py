@@ -7,6 +7,10 @@ import random
 from datetime import datetime, timedelta, timezone
 from passlib.hash import bcrypt
 from uuid import UUID
+import base64
+import os
+from typing import Union, Dict
+from mimetypes import guess_type
 
 
 async def get_token_from_authorization_header_value(
@@ -107,3 +111,50 @@ async def verify_user_password(entered_password, user_password):
 
 async def get_hashed_password(password):
     return str(bcrypt.hash(password))
+
+
+def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
+    """
+    Encodes the file or all files in the directory at the given path to Base64 with MIME type.
+    If the path is a file, returns a Base64 string.
+    If the path is a directory, returns a dictionary with filenames as keys and Base64 strings as values.
+    Returns appropriate messages if the directory is empty or the path is invalid.
+    """
+    # Check if path is a file
+    if os.path.isfile(path):
+        mime_type, _ = guess_type(path)
+        if mime_type is None:
+            return "Could not determine MIME type for the file."
+
+        with open(path, "rb") as file:
+            encoded_string = base64.b64encode(file.read()).decode("utf-8")
+
+        return f"data:{mime_type};base64,{encoded_string}"
+
+    # Check if path is a directory
+    elif os.path.isdir(path):
+        files = os.listdir(path)
+        if not files:
+            return "Path provided is an empty directory."
+
+        encoded_files = {}
+        for file_name in files:
+            file_path = os.path.join(path, file_name)
+            if os.path.isfile(file_path):
+                mime_type, _ = guess_type(file_path)
+                if mime_type is None:
+                    encoded_files[file_name] = "Could not determine MIME type"
+                    continue
+
+                with open(file_path, "rb") as file:
+                    encoded_string = base64.b64encode(file.read()).decode(
+                        "utf-8"
+                    )
+                    encoded_files[file_name] = (
+                        f"data:{mime_type};base64,{encoded_string}"
+                    )
+
+        return encoded_files
+
+    # Path is neither a file nor a directory
+    return "Invalid path provided. Path is neither a file nor a directory."

@@ -6,7 +6,7 @@ import uuid
 from typing import Union
 from datetime import datetime, timedelta, timezone
 from decouple import config
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 from typing import Dict
 from Utility_Methods.Utility_Methods import (
     get_token_from_authorization_header_value,
@@ -14,7 +14,9 @@ from Utility_Methods.Utility_Methods import (
     verify_otp,
     verify_user_password,
     get_hashed_password,
+    encode_path_to_base64,
 )
+import os
 
 
 async def create_user(user_data: UserCreate) -> Union[User, dict]:
@@ -270,21 +272,29 @@ async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
         )
 
 
-async def get_user_data(payload: dict):
+async def get_user_data(payload: dict) -> dict:
     """
     Retrieves user data by user_id, excluding the password field.
+    Includes profile picture as Base64 encoded string if available.
     """
-    user_id = payload.get("user_data")
+    user_id = payload.get("user_id")
     user = await User.get_or_none(id=user_id)
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
 
-    # Exclude the password field
+    # Convert user model to dictionary and exclude password
     user_data = user.to_dict()
-    user_data.pop("password", None)  # Remove the password field if it exists
+    user_data.pop("password", None)
+
+    # Fetch and add Base64 encoded profile picture
+    profile_picture_response = await get_profile_picture(user_id=user_id)
+    user_data["profile_picture"] = profile_picture_response.get(
+        "profile_picture", None
+    )
 
     return user_data
 
@@ -408,3 +418,56 @@ async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Something wrong happened on our end!",
     )
+
+
+async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
+    user_id = payload.get("user_id")
+    directory = os.path.join(
+        f"{config("USER_MEDIA_PATH")}",
+        f"{config("USER_PROFILE_PICTURES_DIRECTORY")}",
+    )
+    os.makedirs(directory, exist_ok=True)
+
+    # Create the file path
+    file_path = os.path.join(directory, f"{user_id}_{file.filename}")
+
+    # Save the file to the directory
+    with open(file_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+
+    # Update the user profile picture path in the database
+    user = await User.get(id=user_id)
+    user.profile_picture_path = file_path
+    await user.save()
+
+    return {"message": "Profile picture uploaded successfully"}
+
+
+async def get_profile_picture(payload: dict) -> dict:
+    """
+    Retrieves the profile picture for a user in Base64 format with MIME encoding.
+    """
+    # Fetch the user from the database
+    user_id = payload.get("user_id")
+    user = await User.get_or_none(id=user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    # Check if user has a profile picture path
+    if not user.profile_picture_path:
+        return {"message": "No profile picture available."}
+
+    # Convert profile picture to Base64 using the utility method
+    try:
+        profile_picture_base64 = encode_path_to_base64(
+            user.profile_picture_path
+        )
+        return {"profile_picture": profile_picture_base64}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error encoding profile picture: {str(e)}",
+        )
