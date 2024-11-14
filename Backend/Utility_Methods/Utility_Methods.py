@@ -15,9 +15,22 @@ from mimetypes import guess_type
 
 async def get_token_from_authorization_header_value(
     authorization_header_value: str,
-):
-    token = authorization_header_value.split(" ")[1]
-    return token
+) -> str:
+    """
+    Extracts the token from an Authorization header value formatted as "Bearer <token>".
+    If 'Bearer ' is not present, it raises an HTTPException.
+    """
+    bearer_prefix = "Bearer "
+
+    if authorization_header_value.startswith(bearer_prefix):
+        # Remove "Bearer " prefix manually
+        token = authorization_header_value[len(bearer_prefix) :]
+        return token.strip()
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authorization header must start with 'Bearer '",
+        )
 
 
 async def decode_jwt(token):
