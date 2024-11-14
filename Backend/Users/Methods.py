@@ -12,7 +12,6 @@ from Utility_Methods.Utility_Methods import (
     get_token_from_authorization_header_value,
     create_jwt,
     verify_otp,
-    decode_jwt,
     verify_user_password,
     get_hashed_password,
 )
