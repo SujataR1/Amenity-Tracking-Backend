@@ -3,9 +3,9 @@ email_templates = {
         "subject": "Password Reset Request for {username}",
         "body": (
             "Hello {username},\n\n"
-            "You requested a password reset. Click the link below to reset your password.:\n"
+            "You requested a password reset. Use the OTP below to reset your password.:\n"
             "{otp_code}\n\n"
-            "The link will be valid for 30 mins \n\n"
+            "The OTP will be valid for 10 mins \n\n"
             "If you did not request this, please ignore this email."
         ),
     },

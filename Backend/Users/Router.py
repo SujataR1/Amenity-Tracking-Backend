@@ -5,7 +5,6 @@ from Users.Data_Schemas import (
     UserCreate,
     LoginData,
     UserUpdate,
-    OTPTypeEnum,
     Toggle2FARequest,
     PasswordResetRequest,
     PasswordResetConfirm,
