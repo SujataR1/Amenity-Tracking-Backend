@@ -3,8 +3,6 @@ from tortoise.models import Model
 from Users.Data_Schemas import RoleEnum, MartialStatusEnum, OTPTypeEnum
 from Questionnaire.Data_Schemas import MonthEnum
 
-# from Methods import validate_pan
-
 
 class User(Model):
     id = fields.UUIDField(pk=True)  # Primary key field
