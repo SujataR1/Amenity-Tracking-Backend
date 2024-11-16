@@ -1,0 +1,574 @@
+from tortoise.transactions import atomic
+from Database_and_ORM.Database_Models import (
+    User,
+    Admin,
+    OTP,
+    Blacklisted_Tokens,
+)
+from fastapi import HTTPException, status, UploadFile
+from decouple import config
+import os
+from Comms.Methods import get_email_content, send_email
+from datetime import datetime, timezone, timedelta
+from Utility_Methods.Utility_Methods import (
+    create_jwt,
+    verify_otp,
+    verify_user_password,
+    get_hashed_password,
+    encode_path_to_base64,
+    generate_random_otp,
+    get_token_from_authorization_header_value,
+)
+from Users.Data_Schemas import OTPTypeEnum, RoleEnum
+
+
+@atomic()
+async def update_admin_user_count():
+    """
+    Updates the `number_of_users` field in the Admin table with the current count of users from the User table.
+
+    Returns:
+        bool: True if the update is successful, False otherwise.
+    """  # Import Admin model
+
+    try:
+        # Get the total user count
+        total_users = await User.all().count()
+
+        # Fetch the single admin record
+        admin = await Admin.all().first()
+
+        if not admin:
+            print("No admin record found.")
+            return False
+
+        # Update the number_of_users field
+        admin.number_of_users = total_users
+        await admin.save()
+        return True, int(total_users)
+
+    except Exception as e:
+        print(f"An error occurred while updating the admin user count: {e}")
+        return False
+
+
+async def create_admin(admin_data: dict) -> dict:
+    """
+    Creates a new admin in the database with hashed password.
+    """
+    hashed_password = await get_hashed_password(admin_data["password"])
+    number_of_users, count = await update_admin_user_count()
+
+    admin = Admin(
+        name=admin_data["name"],
+        email=admin_data["email"],
+        password=hashed_password,
+        role=RoleEnum.user,
+        number_of_users=count,
+    )
+
+    try:
+        await admin.save()
+        return {"message": "Admin account successfully created!"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating admin: {str(e)}",
+        )
+
+
+# Authenticate Admin
+async def authenticate_admin(email: str, password: str, otp_code: str = None):
+    """
+    Authenticates an admin by email and password.
+    """
+    admin = await Admin.get_or_none(email=email)
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    verified = await verify_user_password(
+        entered_password=password, user_password=admin.password
+    )
+
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    # 2FA Check
+    if admin.two_fa_status:
+        if not otp_code:
+            await generate_and_send_otp(
+                admin.email, purpose=OTPTypeEnum.TWO_FA
+            )
+            raise HTTPException(
+                status_code=status.HTTP_308_PERMANENT_REDIRECT,
+                detail="2FA enabled. Please verify with OTP.",
+            )
+
+    # Generate JWT
+    token = await create_jwt(
+        str(admin.id),
+        expiration_duration=int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")),
+    )
+    return admin, token
+
+
+# Update Admin
+async def update_admin(update_data: dict, admin_id: str):
+    """
+    Updates admin details.
+    """
+    admin = await Admin.get_or_none(id=admin_id)
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found",
+        )
+
+    changes = {}
+
+    for field, new_value in update_data.items():
+        if field == "password":  # Hash password if updating
+            new_value = await get_hashed_password(new_value)
+        current_value = getattr(admin, field, None)
+        if current_value != new_value:
+            setattr(admin, field, new_value)
+            changes[field] = (
+                f"Updated `{field}` from `{current_value}` to `{new_value}`"
+            )
+
+    if changes:
+        await admin.save()
+        return {"changes": changes}
+    else:
+        return {"message": "No changes made."}
+
+
+# Delete Admin
+async def delete_admin(admin_id: str, authorization: str):
+    """
+    Deletes an admin based on admin ID.
+    """
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found",
+        )
+
+    await admin.delete()
+    # Blacklist the token
+    token = await get_token_from_authorization_header_value(authorization)
+    await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+    update_user_count = await update_admin_user_count
+    if update_user_count:
+        return {"message": "User deleted successfully and token blacklisted"}
+
+
+# Upload Profile Picture
+async def upload_admin_profile_picture(
+    admin_id: str, file: UploadFile
+) -> dict:
+    """
+    Uploads a profile picture for the admin.
+    """
+    directory = os.path.join(
+        config("ADMIN_MEDIA_PATH"), config("ADMIN_PROFILE_PICTURES_DIRECTORY")
+    )
+    os.makedirs(directory, exist_ok=True)
+
+    if file.content_type not in ["image/jpeg", "image/png", "image/jpg"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only JPEG and PNG images are allowed.",
+        )
+
+    # Check file size
+    file_size = await file.read()
+    if len(file_size) > int(config("MAXIMUM_IMAGE_SIZE")) * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size should not exceed {config('MAXIMUM_IMAGE_SIZE')} MBs.",
+        )
+
+    await file.seek(0)
+
+    file_path = os.path.join(directory, f"{admin_id}_{file.filename}")
+    with open(file_path, "wb") as buffer:
+        buffer.write(file_size)
+
+    admin = await Admin.get(id=admin_id)
+    admin.profile_picture_path = file_path
+    await admin.save()
+
+    return {"message": "Profile picture uploaded successfully"}
+
+
+async def request_admin_password_reset(email: str) -> dict:
+    """
+    Generates a password reset OTP for an admin and sends it via email.
+
+    Args:
+        email (str): The admin's registered email address.
+
+    Returns:
+        dict: A message indicating that the password reset OTP was sent successfully.
+
+    Raises:
+        HTTPException: If the email does not exist or OTP generation fails.
+    """
+
+    # Retrieve the admin by email
+    admin = await Admin.get_or_none(email=email)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin with this email does not exist.",
+        )
+
+    # Check for an existing OTP
+    existing_otp = await OTP.filter(
+        user_id=admin.id, purpose=OTPTypeEnum.PASSWORD_RESET
+    ).first()
+
+    # Use existing OTP if still valid; otherwise, generate a new one
+    if existing_otp and existing_otp.expiration > datetime.now(timezone.utc):
+        otp_code = existing_otp.otp_code
+    else:
+        otp_code = await generate_random_otp()
+
+        # Invalidate any existing OTPs for password reset for this user
+        await OTP.filter(
+            user_id=admin.id, purpose=OTPTypeEnum.PASSWORD_RESET
+        ).delete()
+
+        # Create a new OTP entry
+        try:
+            new_otp = OTP(
+                otp_code=otp_code,
+                user_id=admin.id,
+                purpose="PASSWORD_RESET",
+                expiration=datetime.now(timezone.utc)
+                + timedelta(minutes=10),  # OTP valid for 10 minutes
+            )
+            await new_otp.save()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error generating OTP: {str(e)}",
+            )
+
+    # Prepare the email content
+    email_content = await get_email_content(
+        "password_reset", username=admin.name, otp_code=otp_code
+    )
+
+    # Send the OTP via email
+    email_sent = await send_email(
+        to_email=admin.email,
+        subject=email_content["subject"],
+        body=email_content["body"],
+    )
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OTP could not be sent.",
+        )
+
+    return {"message": "Password reset OTP sent successfully."}
+
+
+# Get Profile Picture
+async def get_admin_profile_picture(admin_id: str) -> dict:
+    """
+    Retrieves the profile picture for an admin.
+    """
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found",
+        )
+
+    if not admin.profile_picture_path:
+        return {"message": "No profile picture available."}
+
+    profile_picture_base64 = encode_path_to_base64(admin.profile_picture_path)
+    return {"profile_picture": profile_picture_base64}
+
+
+# Get 2FA Status
+async def get_admin_2fa_status(admin_id: str) -> dict:
+    """
+    Retrieves the current 2FA status for an admin.
+    """
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found.",
+        )
+
+    status_message = "enabled" if admin.two_fa_status else "disabled"
+    return {"message": f"2FA is currently {status_message} for this admin."}
+
+
+# Toggle 2FA Status
+async def toggle_admin_2fa_status(admin_id: str, password: str) -> dict:
+    """
+    Toggles the 2FA status for an admin.
+    """
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found",
+        )
+
+    verified = await verify_user_password(password, admin.password)
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password.",
+        )
+
+    admin.two_fa_status = not admin.two_fa_status
+    await admin.save()
+
+    status_message = "enabled" if admin.two_fa_status else "disabled"
+    return {"message": f"2FA has been {status_message}."}
+
+
+async def generate_and_send_otp(admin_id: str, purpose: str) -> dict:
+    """
+    Generates an OTP for an admin, stores it in the database, and sends it via email.
+
+    Args:
+        admin_id (str): The ID of the admin for whom the OTP is generated.
+        purpose (str): The purpose of the OTP (e.g., TWO_FA, PASSWORD_RESET).
+
+    Returns:
+        dict: A success message if the OTP is generated and sent.
+
+    Raises:
+        HTTPException: If the admin is not found or the OTP could not be sent.
+    """
+    # Retrieve the admin
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found.",
+        )
+
+    # Check for existing OTP for this admin and purpose
+    existing_otp = await OTP.filter(user_id=admin.id, purpose=purpose).first()
+
+    # Validate existing OTP or generate a new one
+    if existing_otp and existing_otp.expiration > datetime.now(timezone.utc):
+        otp_code = existing_otp.otp_code
+    else:
+        otp_code = await generate_random_otp()  # Generate a new random OTP
+        await OTP.filter(
+            user_id=admin.id, purpose=purpose
+        ).delete()  # Invalidate old OTPs
+
+        # Create and save the new OTP
+        try:
+            new_otp = OTP(
+                user_id=admin.id,
+                purpose=purpose,
+                otp_code=otp_code,
+                expiration=datetime.now(timezone.utc)
+                + timedelta(minutes=10),  # Valid for 10 minutes
+            )
+            await new_otp.save()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error generating OTP: {str(e)}",
+            )
+
+    # Prepare and send the OTP via email
+    email_content = await get_email_content(
+        "otp_template", username=admin.name, otp_code=otp_code
+    )
+    email_sent = await send_email(
+        to_email=admin.email,
+        subject=email_content["subject"],
+        body=email_content["body"],
+    )
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OTP could not be sent.",
+        )
+
+    return {"message": "OTP sent successfully."}
+
+
+async def verify_2fa_and_login(email: str, otp_code: str):
+    """
+    Verifies the OTP for 2FA and, if valid, generates a JWT token and sets it in the response headers.
+    """
+    # Retrieve the OTP entry for the user and 2FA purpose
+    user = await Admin.get_or_none(email=email)
+    user_id = user.id
+    verified = await verify_otp(user_id, otp_code, purpose=OTPTypeEnum.TWO_FA)
+
+    if verified:
+        # Generate JWT token
+        token = await create_jwt(
+            user_id,
+            expiration_duration=int(
+                config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")
+            ),
+        )
+        response = token, user
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="2FA Verification Failed",
+        )
+
+    return response
+
+
+async def logout_admin(authorization: str) -> dict:
+    """
+    Logs out the admin by blacklisting the token.
+    """
+    try:
+        token = await get_token_from_authorization_header_value(authorization)
+        await Blacklisted_Tokens.create(token=token)
+        return {"message": "Admin successfully logged out"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Either you have already logged out, or there has been an error from our end",
+        )
+
+
+async def reset_admin_password(email: str, otp_code: str, new_password: str):
+    """
+    Resets the admin's password by verifying the OTP and updating the password.
+    """
+    admin = await Admin.get_or_none(email=email)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin with this email was not found.",
+        )
+
+    # Verify OTP
+    verified = await verify_otp(
+        otp_code=otp_code, user_id=admin.id, purpose="PASSWORD_RESET"
+    )
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP for password reset.",
+        )
+
+    # Update password
+    try:
+        hashed_password = await get_hashed_password(new_password)
+        admin.password = hashed_password
+        await admin.save()
+        return {"message": "Password has been reset successfully."}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error resetting password.",
+        )
+
+
+async def view_user_data(
+    payload: dict, user_id: str = None, limit: str = None
+) -> list:
+    """
+    Retrieves user data by user_id or all users in a paginated format.
+    Excludes sensitive fields such as password and profile_picture_path.
+    This method can only be called by an authenticated admin.
+
+    Args:
+        payload (dict): The JWT payload containing the user_id of the requesting admin.
+        user_id (str, optional): The ID of the user to retrieve data for.
+        limit (str, optional): A limit parameter in the format "start-end" for pagination, required if user_id is not provided.
+
+    Returns:
+        list: A list of user data dictionaries with the profile picture in Base64 if available.
+    """
+    # Verify that the requesting user is an admin
+    admin_id = payload.get("user_id")
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins are authorized to view user data.",
+        )
+
+    if user_id:
+        # Fetch data for a specific user
+        user = await User.get_or_none(id=user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        # Convert user instance to a dictionary excluding sensitive fields
+        user_data = {
+            field: value
+            for field, value in user.__dict__.items()
+            if not field.startswith("_")
+            and field not in ["password", "profile_picture_path"]
+        }
+
+        return [user_data]
+
+    # Fetch paginated user data if no user_id is provided
+    if not limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Limit parameter is required if user_id is not provided.",
+        )
+
+    # Parse the limit parameter
+    try:
+        start, end = map(int, limit.split("-"))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Limit parameter format is incorrect. Use 'start-end' format.",
+        )
+
+    # Fetch users with pagination and ordering by updated_at in descending order
+    users = (
+        await User.all()
+        .order_by("-updated_at")
+        .offset(start - 1)
+        .limit(end - start + 1)
+    )
+
+    user_data_list = []
+    for user in users:
+        user_data = {
+            field: value
+            for field, value in user.__dict__.items()
+            if not field.startswith("_")
+            and field not in ["password", "profile_picture_path"]
+        }
+
+        user_data_list.append(user_data)
+
+    return user_data_list
