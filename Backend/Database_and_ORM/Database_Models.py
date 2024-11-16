@@ -160,7 +160,7 @@ class Admin(Model):
     class Meta:
         table = "admin"
         unique_together = (
-            "user_id",
+            "id",
             "role",
         )  # Ensures no duplicate admin roles for the same user_id
         ordering = ["created_at"]
