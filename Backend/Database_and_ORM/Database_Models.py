@@ -136,7 +136,10 @@ class APIActivityLog(Model):
 class Admin(Model):
     id = fields.UUIDField(pk=True, max_length=6)
     role = fields.CharEnumField(
-        max_length=5, default=RoleEnum.admin, description="Role of the admin"
+        RoleEnum,
+        max_length=5,
+        default=RoleEnum.admin,
+        description="Role of the admin",
     )
     name = fields.CharField(max_length=255, description="Name of the admin")
     number_of_users = fields.IntField(
