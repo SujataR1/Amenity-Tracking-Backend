@@ -16,6 +16,7 @@ from Utility_Methods.Utility_Methods import (
     generate_random_otp,
     get_token_from_authorization_header_value,
 )
+from Admin.Methods import update_admin_user_count
 import os
 
 
@@ -42,12 +43,14 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
 
     try:
         await user.save()
-        return {"message": "Account succesfully created!"}
+        update_user_count, count = await update_admin_user_count
+        if update_user_count:
+            return {"message": "Account succesfully created!"}
     except IntegrityError:
         return {"error": "A user with same details already exists."}
 
 
-async def authenticate_user(email: str, password: str, otp_code: str = None):
+async def authenticate_user(email: str, password: str):
     """
     Authenticates a user by email and password.
     If 2FA is enabled, requires OTP verification before generating JWT.
@@ -167,8 +170,9 @@ async def delete_user(payload: dict, authorization: str):
     # Blacklist the token
     token = await get_token_from_authorization_header_value(authorization)
     await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-
-    return {"message": "User deleted successfully and token blacklisted"}
+    update_user_count, count = await update_admin_user_count
+    if update_user_count:
+        return {"message": "User deleted successfully and token blacklisted"}
 
 
 async def verify_2fa_and_login(email: str, otp_code: str):

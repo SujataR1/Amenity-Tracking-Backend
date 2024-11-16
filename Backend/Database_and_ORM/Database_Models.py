@@ -131,3 +131,33 @@ class APIActivityLog(Model):
     class Meta:
         table = "api_activity_log"
         ordering = ["-time_requested"]
+
+
+class Admin(Model):
+    id = fields.UUIDField(pk=True, max_length=6)
+    role = fields.CharEnumField(
+        max_length=5, default=RoleEnum.admin, description="Role of the admin"
+    )
+    name = fields.CharField(max_length=255, description="Name of the admin")
+    number_of_users = fields.IntField(
+        default=0, description="Automatically updates from the user table"
+    )
+    email = fields.CharField(max_length=100, unique=True)
+    password = fields.CharField(
+        max_length=255, description="Hashed password for admin login"
+    )
+    two_fa_status = fields.BooleanField(default=False)
+    created_at = fields.DatetimeField(
+        auto_now_add=True, description="Timestamp when the admin was created"
+    )
+    updated_at = fields.DatetimeField(
+        auto_now=True, description="Timestamp when the admin was last updated"
+    )
+
+    class Meta:
+        table = "admin"
+        unique_together = (
+            "user_id",
+            "role",
+        )  # Ensures no duplicate admin roles for the same user_id
+        ordering = ["created_at"]
