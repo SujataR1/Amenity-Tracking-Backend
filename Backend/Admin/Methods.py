@@ -45,7 +45,7 @@ async def update_admin_user_count():
         # Update the number_of_users field
         admin.number_of_users = total_users
         await admin.save()
-        return True, int(total_users)
+        return int(total_users)
 
     except Exception as e:
         print(f"An error occurred while updating the admin user count: {e}")

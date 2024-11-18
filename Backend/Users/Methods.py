@@ -38,9 +38,10 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
 
     try:
         await user.save()
-        update_user_count, count = await update_admin_user_count
-        if update_user_count:
-            return {"message": "Account succesfully created!"}
+        return {"message": "Account succesfully created!"}
+        # count = await update_admin_user_count()
+        # if count:
+        #     return {"message": "Account succesfully created!"}
     except IntegrityError:
         return {"error": "A user with same details already exists."}
 
@@ -164,10 +165,17 @@ async def delete_user(payload: dict, authorization: str):
 
     # Blacklist the token
     token = await get_token_from_authorization_header_value(authorization)
-    await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-    update_user_count, count = await update_admin_user_count
-    if update_user_count:
+    blacklisted = await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+    if blacklisted:
         return {"message": "User deleted successfully and token blacklisted"}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong on our end",
+        )
+    # count = await update_admin_user_count()
+    # if count:
+    #     return {"message": "User deleted successfully and token blacklisted"}
 
 
 async def verify_2fa_and_login(email: str, otp_code: str):
