@@ -575,15 +575,6 @@ async def view_user_data(
     """
     Retrieves user data by user_id or all users in a paginated format.
     Excludes sensitive fields such as password and profile_picture_path.
-    This method can only be called by an authenticated admin.
-
-    Args:
-        payload (dict): The JWT payload containing the user_id of the requesting admin.
-        user_id (str, optional): The ID of the user to retrieve data for.
-        limit (str, optional): A limit parameter in the format "start-end" for pagination, required if user_id is not provided.
-
-    Returns:
-        list: A list of user data dictionaries with the profile picture in Base64 if available.
     """
     # Verify that the requesting user is an admin
     admin_id = payload.get("user_id")
@@ -595,23 +586,26 @@ async def view_user_data(
         )
 
     if user_id:
-        # Fetch data for a specific user
-        user = await User.get_or_none(id=user_id)
-        if not user:
+        # Fetch data for a specific user as a dictionary
+        user_list = await User.filter(id=user_id).values()
+        if not user_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
 
-        # Convert user instance to a dictionary excluding sensitive fields
-        user_data = {
-            field: value
-            for field, value in user.__dict__.items()
-            if not field.startswith("_")
-            and field not in ["password", "profile_picture_path"]
-        }
+        user = user_list[
+            0
+        ]  # Get the first (and only) dictionary from the list
 
-        return [user_data]
+        # Add profile picture in Base64 format if present
+        if user.get("profile_picture_path"):
+            user["profile_picture"] = await encode_path_to_base64(
+                user["profile_picture_path"]
+            )
+            user.pop("profile_picture_path", None)  # Remove the path field
+
+        return [user]
 
     # Fetch paginated user data if no user_id is provided
     if not limit:
@@ -635,20 +629,18 @@ async def view_user_data(
         .order_by("-updated_at")
         .offset(start - 1)
         .limit(end - start + 1)
+        .values()
     )
 
-    user_data_list = []
+    # Add profile pictures in Base64 format for each user
     for user in users:
-        user_data = {
-            field: value
-            for field, value in user.__dict__.items()
-            if not field.startswith("_")
-            and field not in ["password", "profile_picture_path"]
-        }
+        if user.get("profile_picture_path"):
+            user["profile_picture"] = await encode_path_to_base64(
+                user["profile_picture_path"]
+            )
+            user.pop("profile_picture_path", None)  # Remove the path field
 
-        user_data_list.append(user_data)
-
-    return user_data_list
+    return users
 
 
 async def verify_email_otp(payload: dict, otp_code: str) -> bool:

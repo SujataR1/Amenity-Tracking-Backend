@@ -25,18 +25,21 @@ async def get_questionnaire_endpoint():
 
 
 @Questionnaire_Router.post("/answer", status_code=status.HTTP_201_CREATED)
+@Questionnaire_Router.post("/answer", status_code=status.HTTP_201_CREATED)
 async def create_questionnaire_answer_endpoint(
     answer_data: QuestionnaireAnswerCreate, payload: dict = Depends(verify_jwt)
 ):
     """
-    Endpoint to submit answers to the questionnaire for a user.
+    Submit all 18 answers to the questionnaire for a user.
     """
     user_id = payload.get("user_id")
     try:
-        await create_questionnaire_answers(
+        result = await create_questionnaire_answers(
             user_id=user_id, answer_data=answer_data
         )
-        return {"message": "Questionnaire answers submitted successfully"}
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -49,19 +52,16 @@ async def update_questionnaire_answer_endpoint(
     answer_data: QuestionnaireAnswerUpdate, payload: dict = Depends(verify_jwt)
 ):
     """
-    Endpoint to update answers to the questionnaire for a user.
+    Update answers to the questionnaire for a user.
     """
     user_id = payload.get("user_id")
     try:
-        await update_questionnaire_answers(
+        result = await update_questionnaire_answers(
             user_id=user_id, answer_data=answer_data
         )
-        return {"message": "Questionnaire answers updated successfully"}
-    except DoesNotExist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Questionnaire answers not found for this user",
-        )
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

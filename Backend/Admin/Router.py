@@ -4,6 +4,7 @@ from fastapi import (
     status,
     Response,
     Header,
+    Body,
     Depends,
     File,
     UploadFile,
@@ -16,6 +17,7 @@ from Admin.Data_Schemas import (
     PasswordResetConfirm,
     TwoFARequest,
     OTPRequest,
+    ViewUsersRequest,
 )
 from Utility_Methods.Utility_Methods import verify_jwt
 from Admin.Methods import (
@@ -191,12 +193,15 @@ async def get_profile_picture_endpoint(payload=Depends(verify_jwt)):
 
 @Admin_Router.get("/view-users", status_code=status.HTTP_200_OK)
 async def view_users_endpoint(
-    payload: dict = Depends(verify_jwt), user_id: str = None, limit: str = None
+    payload: dict = Depends(verify_jwt),
+    view_users_request: ViewUsersRequest = Body(...),
 ):
     """
     Allows the admin to view user data. Supports pagination.
     """
-    return await view_user_data(payload, user_id, limit)
+    return await view_user_data(
+        payload, view_users_request.user_id, view_users_request.limit
+    )
 
 
 @Admin_Router.post("/otp/verify/email", status_code=status.HTTP_200_OK)

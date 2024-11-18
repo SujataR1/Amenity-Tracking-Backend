@@ -54,3 +54,14 @@ class PasswordResetConfirm(BaseModel):
     email: EmailStr
     new_password: str
     otp_code: str
+
+
+class ViewUsersRequest(BaseModel):
+    user_id: Optional[str] = Field(
+        None, description="The ID of the user to retrieve"
+    )
+    limit: Optional[str] = Field(
+        None,
+        pattern=r"^\d+-\d+$",
+        description="Pagination range in 'start-end' format",
+    )
