@@ -541,7 +541,7 @@ async def reset_admin_password(email: str, otp_code: str, new_password: str):
 
 async def get_admin_data(payload: dict) -> dict:
     """
-    Retrieves user data by user_id, excluding the password field.
+    Retrieves admin data by user_id, excluding the password field.
     """
     admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
@@ -551,25 +551,39 @@ async def get_admin_data(payload: dict) -> dict:
             detail="Admin not found",
         )
 
+    # Update user count
     await update_admin_user_count()
 
-    # Convert user instance to a dictionary excluding private/internal attributes
+    # Convert admin instance to a dictionary excluding private/internal attributes
     admin_data = {
         field: value
         for field, value in admin.__dict__.items()
         if not field.startswith("_")
     }
 
-    # Remove password and include profile picture as base64
+    # Remove sensitive or unnecessary fields
     admin_data.pop("password", None)
     admin_data.pop("id", None)
+
+    # Handle profile picture field
     if admin_data.get("profile_picture_path"):
-        admin_data["profile_picture"] = await encode_path_to_base64(
+        encoded_picture = await encode_path_to_base64(
             admin_data["profile_picture_path"]
         )
+        if (
+            encoded_picture
+            == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+        ):
+            # If the path is invalid, remove the field
+            admin_data.pop("profile_picture_path", None)
+        else:
+            # Otherwise, set the Base64-encoded string
+            admin_data["profile_picture"] = encoded_picture
     else:
         admin_data["profile_picture"] = None
-    admin_data.pop("profile_picture_path", None)  # Remove the path field
+
+    # Ensure the path field is removed from the response
+    admin_data.pop("profile_picture_path", None)
 
     return admin_data
 
@@ -602,17 +616,26 @@ async def view_user_data(
         user = user_list[
             0
         ]  # Get the first (and only) dictionary from the list
-
         user.pop("password", None)
 
-        # Add profile picture in Base64 format if present
+        # Add profile picture in Base64 format if present and valid
         if user.get("profile_picture_path"):
-
-            user["profile_picture"] = await encode_path_to_base64(
+            encoded_picture = await encode_path_to_base64(
                 user["profile_picture_path"]
             )
-            user.pop("profile_picture_path", None)  # Remove the path field
+            if (
+                encoded_picture
+                == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+            ):
+                user.pop(
+                    "profile_picture_path", None
+                )  # Remove invalid path field
+            else:
+                user["profile_picture"] = encoded_picture
 
+        user.pop(
+            "profile_picture_path", None
+        )  # Ensure the path field is removed
         return [user]
 
     # Fetch paginated user data if no user_id is provided
@@ -643,11 +666,24 @@ async def view_user_data(
     # Add profile pictures in Base64 format for each user
     for user in users:
         if user.get("profile_picture_path"):
-
-            user["profile_picture"] = await encode_path_to_base64(
+            encoded_picture = await encode_path_to_base64(
                 user["profile_picture_path"]
             )
-            user.pop("profile_picture_path", None)  # Remove the path field
+            if (
+                encoded_picture
+                == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+            ):
+                user.pop(
+                    "profile_picture_path", None
+                )  # Remove invalid path field
+            else:
+                user["profile_picture"] = encoded_picture
+        else:
+            user["profile_picture"] = None
+
+        user.pop(
+            "profile_picture_path", None
+        )  # Ensure the path field is removed
 
     return users
 
