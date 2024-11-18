@@ -15,14 +15,6 @@ class OTPTypeEnum(str, Enum):
     PHONE_VERIFICATION = "Phone Number Verification"
 
 
-class MartialStatusEnum(str, Enum):
-    unmarried = "Unmarried"
-    married = "Married"
-    divorced = "Divorced"
-    judicially_separated = "Judicially Separated"
-    widowed = "Widowed"
-
-
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
@@ -30,11 +22,6 @@ class UserCreate(BaseModel):
     address: str
     pin_code: int
     phone_number: int
-    aadhar_card_number: int
-    pan: str
-    occupation: str
-    martial_status: MartialStatusEnum
-    annual_income_bar: int
 
 
 class UserUpdate(BaseModel):
@@ -43,11 +30,6 @@ class UserUpdate(BaseModel):
     address: Optional[str] = None
     pin_code: Optional[int] = None
     phone_number: Optional[int] = None
-    aadhar_card_number: Optional[int] = None
-    pan: Optional[str] = None
-    occupation: Optional[str] = None
-    martial_status: Optional[MartialStatusEnum] = None
-    annual_income_bar: Optional[int] = None
 
 
 class LoginData(BaseModel):

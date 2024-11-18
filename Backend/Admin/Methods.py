@@ -322,29 +322,46 @@ async def get_admin_2fa_status(admin_id: str) -> dict:
 
 
 # Toggle 2FA Status
-async def toggle_admin_2fa_status(admin_id: str, password: str) -> dict:
+async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
     """
-    Toggles the 2FA status for an admin.
+    Toggles the 2FA status for a user and returns the new status.
+    Ensures the user's email is verified before enabling 2FA.
     """
-    admin = await Admin.get_or_none(id=admin_id)
-    if not admin:
+    user_id = payload.get("user_id")
+
+    # Fetch the user
+    user = await User.get_or_none(id=user_id)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Admin not found",
+            detail="User not found.",
         )
 
-    verified = await verify_user_password(password, admin.password)
+    # Verify the password
+    verified = await verify_user_password(
+        entered_password=entered_password, user_password=user.password
+    )
     if not verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid password.",
+            detail="Incorrect password. Please try again.",
         )
 
-    admin.two_fa_status = not admin.two_fa_status
-    await admin.save()
+    # Ensure email is verified before enabling 2FA
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must verify your email before enabling 2FA.",
+        )
 
-    status_message = "enabled" if admin.two_fa_status else "disabled"
-    return {"message": f"2FA has been {status_message}."}
+    # Toggle the 2FA status
+    user.two_fa_status = not user.two_fa_status
+    await user.save()
+
+    if user.two_fa_status:
+        return {"message": "You have enabled 2FA!"}
+    else:
+        return {"message": "You have disabled 2FA!"}
 
 
 async def generate_and_send_otp(admin_id: str, purpose: str) -> dict:
