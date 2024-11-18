@@ -3,6 +3,12 @@ from enum import Enum
 from typing import Optional
 
 
+class AdminCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
 class RoleEnum(str, Enum):
     user = "user"
     admin = "admin"
@@ -15,21 +21,10 @@ class OTPTypeEnum(str, Enum):
     PHONE_VERIFICATION = "Phone Number Verification"
 
 
-class UserCreate(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    address: str
-    pin_code: int
-    phone_number: int
-
-
-class UserUpdate(BaseModel):
+class AdminUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
     email: Optional[EmailStr] = None
-    address: Optional[str] = None
-    pin_code: Optional[int] = None
-    phone_number: Optional[int] = None
+    password: str
 
 
 class LoginData(BaseModel):
@@ -59,3 +54,14 @@ class PasswordResetConfirm(BaseModel):
     email: EmailStr
     new_password: str
     otp_code: str
+
+
+class ViewUsersRequest(BaseModel):
+    user_id: Optional[str] = Field(
+        None, description="The ID of the user to retrieve"
+    )
+    limit: Optional[str] = Field(
+        None,
+        pattern=r"^\d+-\d+$",
+        description="Pagination range in 'start-end' format",
+    )

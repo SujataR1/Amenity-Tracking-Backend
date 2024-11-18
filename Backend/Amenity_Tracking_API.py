@@ -1,9 +1,13 @@
 # main.py
 from fastapi import FastAPI
 from Database_and_ORM.Database_Connector import init_db, close_db
-from Users.Router import User_Router  # Import the user router
+from Users.Router import User_Router
+from Admin.Router import Admin_Router
+from Questionnaire.Router import Questionnaire_Router
 from decouple import config
-from Methods import add_cors_middleware, add_api_key_middleware
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware import Middleware
+from Methods import VerifyAPIKeyMiddleware, APIActivityLoggingMiddleware
 from contextlib import asynccontextmanager
 
 
@@ -16,12 +20,22 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
-# Initialize the app with lifespan
-app = FastAPI(title="Amenity Tracking API", lifespan=lifespan)
+middlewares = [
+    Middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allows all origins; customize as needed
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Authorization", "authorization"],
+    ),
+    Middleware(VerifyAPIKeyMiddleware),
+    Middleware(APIActivityLoggingMiddleware),
+]
 
-# Add middlewares
-add_cors_middleware(app)
-add_api_key_middleware(app)
+app = FastAPI(
+    title="Amenity Tracking API", lifespan=lifespan, middleware=middlewares
+)
 
 
 # Global route
@@ -30,5 +44,12 @@ async def root():
     return {"message": "Welcome to the Amenity Tracking API"}
 
 
-# Register the user router
-app.include_router(User_Router, prefix="/users", tags=["Users"])
+# Register the routers
+routers = [
+    (User_Router, "/users", ["Users"]),
+    (Questionnaire_Router, "/questionnaire", ["Questionnaire"]),
+    (Admin_Router, "/admin", ["Admin"]),
+]
+
+for router, prefix, tags in routers:
+    app.include_router(router, prefix=prefix, tags=tags)
