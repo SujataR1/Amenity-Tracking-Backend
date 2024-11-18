@@ -17,8 +17,10 @@ async def create_questionnaire_answers(
 ) -> dict:
     """
     Creates questionnaire answers for a user.
+    If answers already exist, it returns an error.
     """
     try:
+        # Fetch user by ID
         user = await User.get(id=user_id)
 
         # Check if answers already exist for this user
@@ -26,17 +28,14 @@ async def create_questionnaire_answers(
         if existing_answers:
             return {"error": "Answers already exist for this user."}
 
-        # Dynamically create answers dictionary
-        answers_data = {
-            field.value: getattr(answer_data, field.value)
-            for field in QuestionnaireFields
-        }
+        # Convert Pydantic model to dictionary
+        answers_data = answer_data.dict()
 
-        # Create new answers
+        # Create new questionnaire answers record
         answers = await QuestionnaireAnswers.create(user=user, **answers_data)
         return {
             "message": "Questionnaire answers created successfully",
-            "answers": answers,
+            "answers": answers_data,
         }
 
     except DoesNotExist:
@@ -52,20 +51,27 @@ async def update_questionnaire_answers(
     Updates questionnaire answers for a user.
     """
     try:
-        answers = await QuestionnaireAnswers.get(user_id=user_id)
+        # Fetch user and existing answers
+        user = await User.get(id=user_id)
+        existing_answers = await QuestionnaireAnswers.get(user=user)
+        if not existing_answers:
+            return {"error": "No answers found for this user."}
 
-        # Dynamically update fields based on the enum
-        for field in QuestionnaireFields:
-            setattr(answers, field.value, getattr(answer_data, field.value))
+        # Merge existing answers with updates
+        update_data = answer_data.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(existing_answers, field, value)
 
-        await answers.save()
+        # Save the updated record
+        await existing_answers.save()
+
         return {
             "message": "Questionnaire answers updated successfully",
-            "answers": answers,
+            "updated_answers": update_data,
         }
 
     except DoesNotExist:
-        return {"error": "Answers for this user do not exist"}
+        return {"error": "User or answers not found"}
     except ValidationError as e:
         return {"error": f"Validation Error: {e}"}
 
