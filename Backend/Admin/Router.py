@@ -37,6 +37,7 @@ from Admin.Methods import (
     get_admin_profile_picture,
     verify_email_otp,
     view_user_data,
+    update_admin_user_count,
 )
 
 Admin_Router = APIRouter()
@@ -226,3 +227,8 @@ async def generate_otp_endpoint(otp_request: OTPRequest):
     Generates and sends an OTP for the specified purpose.
     """
     return await generate_and_send_otp(otp_request.email, otp_request.purpose)
+
+
+@Admin_Router.post("/refresh-user-count", status_code=status.HTTP_200_OK)
+async def refresh_user_count_endpoint(payload: dict = Depends(verify_jwt)):
+    return await update_admin_user_count()
