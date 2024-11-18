@@ -34,11 +34,6 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
         address=user_data.address,
         pin_code=user_data.pin_code,
         phone_number=user_data.phone_number,  # Defaults to False if not passed
-        aadhar_card_number=user_data.aadhar_card_number,
-        pan=user_data.pan,
-        occupation=user_data.occupation,
-        martial_status=user_data.martial_status,
-        annual_income_bar=user_data.annual_income_bar,
     )
 
     try:
@@ -408,30 +403,43 @@ async def get_2fa_status(payload: dict) -> str:
 async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
     """
     Toggles the 2FA status for a user and returns the new status.
+    Ensures the user's email is verified before enabling 2FA.
     """
     user_id = payload.get("user_id")
+
+    # Fetch the user
     user = await User.get_or_none(id=user_id)
-    user_password = str(user.password)
-    verified = await verify_user_password(
-        entered_password=entered_password, user_password=user_password
-    )
-    if user and verified:
-        user.two_fa_status = not user.two_fa_status
-        await user.save()
-        if user.two_fa_status:
-            return {"message": "You have enabled 2FA!"}
-        elif not user.two_fa_status:
-            return {"message": "You have disabled 2FA !"}
-    else:
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Please check the entered password",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
         )
 
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Something wrong happened on our end!",
+    # Verify the password
+    verified = await verify_user_password(
+        entered_password=entered_password, user_password=user.password
     )
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password. Please try again.",
+        )
+
+    # Ensure email is verified before enabling 2FA
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must verify your email before enabling 2FA.",
+        )
+
+    # Toggle the 2FA status
+    user.two_fa_status = not user.two_fa_status
+    await user.save()
+
+    if user.two_fa_status:
+        return {"message": "You have enabled 2FA!"}
+    else:
+        return {"message": "You have disabled 2FA!"}
 
 
 async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:

@@ -1,6 +1,6 @@
 from tortoise import fields
 from tortoise.models import Model
-from Users.Data_Schemas import RoleEnum, MartialStatusEnum, OTPTypeEnum
+from Users.Data_Schemas import RoleEnum, OTPTypeEnum
 from Questionnaire.Data_Schemas import MonthEnum
 
 
@@ -13,13 +13,6 @@ class User(Model):
     pin_code = fields.BigIntField(max_length=6)
     phone_number = fields.BigIntField
     phone_number_verified = fields.BooleanField(default=False)
-    aadhar_card_number = fields.BigIntField(length=12, unique=True)
-    pan = fields.CharField(max_length=10)
-    occupation = fields.CharField(max_length=30)
-    martial_status = fields.CharEnumField(
-        MartialStatusEnum, default=MartialStatusEnum.unmarried
-    )
-    annual_income_bar = fields.BigIntField()
     password = fields.CharField(max_length=128)
     two_fa_status = fields.BooleanField(default=False)
     role = fields.CharEnumField(RoleEnum, default=RoleEnum.user)
@@ -143,7 +136,7 @@ class Admin(Model):
     )
     name = fields.CharField(max_length=255, description="Name of the admin")
     number_of_users = fields.IntField(
-        default=0, description="Automatically updates from the user table"
+        default=0, description="Automatically updates"
     )
     email = fields.CharField(max_length=100, unique=True)
     password = fields.CharField(
@@ -159,8 +152,4 @@ class Admin(Model):
 
     class Meta:
         table = "admin"
-        unique_together = (
-            "id",
-            "role",
-        )  # Ensures no duplicate admin roles for the same user_id
         ordering = ["created_at"]
