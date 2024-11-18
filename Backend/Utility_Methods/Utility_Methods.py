@@ -156,4 +156,4 @@ async def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
         return encoded_files
 
     # Path is neither a file nor a directory
-    return "Invalid path provided. Path is neither a file nor a directory."
+    return "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
