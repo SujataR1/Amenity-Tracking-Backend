@@ -38,10 +38,10 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
 
     try:
         await user.save()
-        return {"message": "Account succesfully created!"}
-        # count = await update_admin_user_count()
-        # if count:
-        #     return {"message": "Account succesfully created!"}
+        # return {"message": "Account succesfully created!"}
+        count = await update_admin_user_count()
+        if count:
+            return {"message": "Account succesfully created!"}
     except IntegrityError:
         return {"error": "A user with same details already exists."}
 
@@ -132,6 +132,12 @@ async def update_user(update_data: Dict, payload: dict):
                     f"`{field}` updated from `{current_value}` to `{new_value}`"
                 )
 
+            if field == "email":
+                user.email_verified = False
+                changes["email_verified"] = (
+                    "Set to `False` due to email change"
+                )
+
         if changes:
             await user.save()
             return changes
@@ -167,15 +173,23 @@ async def delete_user(payload: dict, authorization: str):
     token = await get_token_from_authorization_header_value(authorization)
     blacklisted = await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
     if blacklisted:
-        return {"message": "User deleted successfully and token blacklisted"}
+        # if blacklisted:
+        #     return {"message": "User deleted successfully and token blacklisted"}
+        # else:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #         detail="Something went wrong on our end",
+        #     )
+        count = await update_admin_user_count()
+        if count:
+            return {
+                "message": "User deleted successfully and token blacklisted"
+            }
     else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Something went wrong on our end",
         )
-    # count = await update_admin_user_count()
-    # if count:
-    #     return {"message": "User deleted successfully and token blacklisted"}
 
 
 async def verify_2fa_and_login(email: str, otp_code: str):
