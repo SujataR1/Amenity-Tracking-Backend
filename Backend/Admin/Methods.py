@@ -601,6 +601,8 @@ async def view_user_data(
             0
         ]  # Get the first (and only) dictionary from the list
 
+        user.pop("password", None)
+
         # Add profile picture in Base64 format if present
         if user.get("profile_picture_path"):
             print(user["profile_picture_path"])
