@@ -551,6 +551,8 @@ async def get_admin_data(payload: dict) -> dict:
             detail="Admin not found",
         )
 
+    await update_admin_user_count()
+
     # Convert user instance to a dictionary excluding private/internal attributes
     admin_data = {
         field: value
