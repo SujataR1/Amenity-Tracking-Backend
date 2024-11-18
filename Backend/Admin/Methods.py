@@ -1,4 +1,5 @@
 from tortoise.transactions import atomic
+from tortoise.exceptions import IntegrityError
 from Database_and_ORM.Database_Models import (
     User,
     Admin,
@@ -8,6 +9,7 @@ from Database_and_ORM.Database_Models import (
 from fastapi import HTTPException, status, UploadFile
 from decouple import config
 import os
+from typing import Union
 from Comms.Methods import get_email_content, send_email
 from datetime import datetime, timezone, timedelta
 from Utility_Methods.Utility_Methods import (
@@ -19,7 +21,7 @@ from Utility_Methods.Utility_Methods import (
     generate_random_otp,
     get_token_from_authorization_header_value,
 )
-from Users.Data_Schemas import OTPTypeEnum, RoleEnum
+from Admin.Data_Schemas import OTPTypeEnum, RoleEnum, AdminCreate
 
 
 @atomic()
@@ -52,29 +54,28 @@ async def update_admin_user_count():
         return False
 
 
-async def create_admin(admin_data: dict) -> dict:
+async def create_admin(admin_data: AdminCreate) -> Union[Admin, dict]:
     """
     Creates a new admin in the database with hashed password.
     """
-    hashed_password = await get_hashed_password(admin_data["password"])
-    number_of_users, count = await update_admin_user_count()
+    # Hash the password with a salt
+    hashed_password = await get_hashed_password(admin_data.password)
 
     admin = Admin(
-        name=admin_data["name"],
-        email=admin_data["email"],
+        name=admin_data.name,
+        email=admin_data.email,  # Defaults to False if not passed
         password=hashed_password,
-        role=RoleEnum.user,
-        number_of_users=count,
+        role=RoleEnum.admin,  # Defaults to False if not passed
     )
 
     try:
         await admin.save()
-        return {"message": "Admin account successfully created!"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating admin: {str(e)}",
-        )
+        return {"message": "Admin succesfully created!"}
+        # count = await update_admin_user_count()
+        # if count:
+        #     return {"message": "Account succesfully created!"}
+    except IntegrityError:
+        return {"error": "An admin with same details already exists."}
 
 
 # Authenticate Admin
@@ -120,10 +121,11 @@ async def authenticate_admin(email: str, password: str, otp_code: str = None):
 
 
 # Update Admin
-async def update_admin(update_data: dict, admin_id: str):
+async def update_admin(update_data: dict, payload: dict):
     """
     Updates admin details.
     """
+    admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
 
     if not admin:
@@ -152,10 +154,11 @@ async def update_admin(update_data: dict, admin_id: str):
 
 
 # Delete Admin
-async def delete_admin(admin_id: str, authorization: str):
+async def delete_admin(payload: dict, authorization: str):
     """
     Deletes an admin based on admin ID.
     """
+    admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
     if not admin:
         raise HTTPException(
@@ -169,16 +172,17 @@ async def delete_admin(admin_id: str, authorization: str):
     await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
     update_user_count = await update_admin_user_count
     if update_user_count:
-        return {"message": "User deleted successfully and token blacklisted"}
+        return {"message": "Admin deleted successfully and token blacklisted"}
 
 
 # Upload Profile Picture
 async def upload_admin_profile_picture(
-    admin_id: str, file: UploadFile
+    payload: dict, file: UploadFile
 ) -> dict:
     """
     Uploads a profile picture for the admin.
     """
+    admin_id = payload.get("user_id")
     directory = os.path.join(
         config("ADMIN_MEDIA_PATH"), config("ADMIN_PROFILE_PICTURES_DIRECTORY")
     )
@@ -230,7 +234,7 @@ async def request_admin_password_reset(email: str) -> dict:
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Admin with this email does not exist.",
+            detail="An admin with this email does not exist.",
         )
 
     # Check for an existing OTP
@@ -287,10 +291,11 @@ async def request_admin_password_reset(email: str) -> dict:
 
 
 # Get Profile Picture
-async def get_admin_profile_picture(admin_id: str) -> dict:
+async def get_admin_profile_picture(payload: dict) -> dict:
     """
     Retrieves the profile picture for an admin.
     """
+    admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
     if not admin:
         raise HTTPException(
@@ -306,10 +311,11 @@ async def get_admin_profile_picture(admin_id: str) -> dict:
 
 
 # Get 2FA Status
-async def get_admin_2fa_status(admin_id: str) -> dict:
+async def get_admin_2fa_status(payload: dict) -> dict:
     """
     Retrieves the current 2FA status for an admin.
     """
+    admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
     if not admin:
         raise HTTPException(
@@ -327,19 +333,19 @@ async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
     Toggles the 2FA status for a user and returns the new status.
     Ensures the user's email is verified before enabling 2FA.
     """
-    user_id = payload.get("user_id")
+    admin_id = payload.get("user_id")
 
     # Fetch the user
-    user = await User.get_or_none(id=user_id)
-    if not user:
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
+            detail="Admin not found.",
         )
 
     # Verify the password
     verified = await verify_user_password(
-        entered_password=entered_password, user_password=user.password
+        entered_password=entered_password, user_password=admin.password
     )
     if not verified:
         raise HTTPException(
@@ -348,17 +354,17 @@ async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
         )
 
     # Ensure email is verified before enabling 2FA
-    if not user.email_verified:
+    if not admin.email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You must verify your email before enabling 2FA.",
         )
 
     # Toggle the 2FA status
-    user.two_fa_status = not user.two_fa_status
-    await user.save()
+    admin.two_fa_status = not admin.two_fa_status
+    await admin.save()
 
-    if user.two_fa_status:
+    if admin.two_fa_status:
         return {"message": "You have enabled 2FA!"}
     else:
         return {"message": "You have disabled 2FA!"}
@@ -509,6 +515,39 @@ async def reset_admin_password(email: str, otp_code: str, new_password: str):
         )
 
 
+async def get_admin_data(payload: dict) -> dict:
+    """
+    Retrieves user data by user_id, excluding the password field.
+    """
+    admin_id = payload.get("user_id")
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found",
+        )
+
+    # Convert user instance to a dictionary excluding private/internal attributes
+    admin_data = {
+        field: value
+        for field, value in admin.__dict__.items()
+        if not field.startswith("_")
+    }
+
+    # Remove password and include profile picture as base64
+    admin_data.pop("password", None)
+    admin_data.pop("id", None)
+    if admin_data.get("profile_picture_path"):
+        admin_data["profile_picture"] = await encode_path_to_base64(
+            admin_data["profile_picture_path"]
+        )
+    else:
+        admin_data["profile_picture"] = None
+    admin_data.pop("profile_picture_path", None)  # Remove the path field
+
+    return admin_data
+
+
 async def view_user_data(
     payload: dict, user_id: str = None, limit: str = None
 ) -> list:
@@ -589,3 +628,23 @@ async def view_user_data(
         user_data_list.append(user_data)
 
     return user_data_list
+
+
+async def verify_email_otp(payload: dict, otp_code: str) -> bool:
+    """
+    Verifies the OTP for email verification. If valid, marks the admin's email as verified.
+    """
+    admin_id = payload.get("user_id")
+    admin = await Admin.get(id=admin_id)
+
+    if await verify_otp(
+        otp_code, admin_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
+    ):
+        # Update the user's email_verified status
+        admin.email_verified = True
+        await admin.save()
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired OTP for email verification",
+    )

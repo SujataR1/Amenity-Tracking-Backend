@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from Database_and_ORM.Database_Connector import init_db, close_db
 from Users.Router import User_Router
+from Admin.Router import Admin_Router
 from Questionnaire.Router import Questionnaire_Router
 from decouple import config
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +48,7 @@ async def root():
 routers = [
     (User_Router, "/users", ["Users"]),
     (Questionnaire_Router, "/questionnaire", ["Questionnaire"]),
+    (Admin_Router, "/admin", ["Admin"]),
 ]
 
 for router, prefix, tags in routers:

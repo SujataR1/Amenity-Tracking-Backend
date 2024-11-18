@@ -97,7 +97,7 @@ async def logout_user(authorization: str, payload: dict):
         return "You have already logged out!"
 
 
-async def update_user(update_data: dict, payload: dict):
+async def update_user(update_data: Dict, payload: dict):
     """
     Updates user details based on user_id extracted from JWT token in authorization header.
     """
