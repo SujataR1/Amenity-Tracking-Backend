@@ -600,6 +600,7 @@ async def view_user_data(
 
         # Add profile picture in Base64 format if present
         if user.get("profile_picture_path"):
+            print(user["profile_picture_path"])
             user["profile_picture"] = await encode_path_to_base64(
                 user["profile_picture_path"]
             )
@@ -635,6 +636,7 @@ async def view_user_data(
     # Add profile pictures in Base64 format for each user
     for user in users:
         if user.get("profile_picture_path"):
+            print(user["profile_picture_path"])
             user["profile_picture"] = await encode_path_to_base64(
                 user["profile_picture_path"]
             )
