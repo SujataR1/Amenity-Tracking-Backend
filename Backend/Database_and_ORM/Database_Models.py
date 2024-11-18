@@ -139,6 +139,7 @@ class Admin(Model):
         default=0, description="Automatically updates"
     )
     email = fields.CharField(max_length=100, unique=True)
+    email_verified = fields.BooleanField(default=False)
     password = fields.CharField(
         max_length=255, description="Hashed password for admin login"
     )

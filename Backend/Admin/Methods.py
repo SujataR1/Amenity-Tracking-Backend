@@ -70,10 +70,10 @@ async def create_admin(admin_data: AdminCreate) -> Union[Admin, dict]:
 
     try:
         await admin.save()
-        return {"message": "Admin succesfully created!"}
-        # count = await update_admin_user_count()
-        # if count:
-        #     return {"message": "Account succesfully created!"}
+        # return {"message": "Admin succesfully created!"}
+        count = await update_admin_user_count()
+        if count:
+            return {"message": "Account succesfully created!"}
     except IntegrityError:
         return {"error": "An admin with same details already exists."}
 
@@ -123,7 +123,8 @@ async def authenticate_admin(email: str, password: str, otp_code: str = None):
 # Update Admin
 async def update_admin(update_data: dict, payload: dict):
     """
-    Updates admin details.
+    Updates admin details. Sets email_verification to False if the email is changed
+    and updates the user count after saving changes.
     """
     admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
@@ -140,15 +141,35 @@ async def update_admin(update_data: dict, payload: dict):
         if field == "password":  # Hash password if updating
             new_value = await get_hashed_password(new_value)
         current_value = getattr(admin, field, None)
+
         if current_value != new_value:
             setattr(admin, field, new_value)
             changes[field] = (
                 f"Updated `{field}` from `{current_value}` to `{new_value}`"
             )
 
+            # If the email is changed, reset email verification status
+            if field == "email":
+                admin.email_verified = False
+                changes["email_verified"] = (
+                    "Set to `False` due to email change"
+                )
+
     if changes:
         await admin.save()
-        return {"changes": changes}
+
+        # Call the method to update the admin user count
+        updated_user_count = await update_admin_user_count()
+        if not updated_user_count:
+            return {
+                "message": "Admin details updated, but failed to update user count.",
+                "changes": changes,
+            }
+
+        return {
+            "changes": changes,
+            "user_count": f"User count updated to {updated_user_count}",
+        }
     else:
         return {"message": "No changes made."}
 
