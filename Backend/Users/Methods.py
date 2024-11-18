@@ -316,16 +316,29 @@ async def get_user_data(payload: dict) -> dict:
         if not field.startswith("_")
     }
 
-    # Remove password and include profile picture as base64
+    # Remove sensitive fields
     user_data.pop("password", None)
     user_data.pop("id", None)
+
+    # Handle profile picture
     if user_data.get("profile_picture_path"):
-        user_data["profile_picture"] = await encode_path_to_base64(
+        encoded_picture = await encode_path_to_base64(
             user_data["profile_picture_path"]
         )
+        if (
+            encoded_picture
+            == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+        ):
+            # If the path is invalid, remove the field
+            user_data.pop("profile_picture_path", None)
+        else:
+            # Otherwise, set the Base64-encoded string
+            user_data["profile_picture"] = encoded_picture
     else:
         user_data["profile_picture"] = None
-    user_data.pop("profile_picture_path", None)  # Remove the path field
+
+    # Remove the path field to keep the response clean
+    user_data.pop("profile_picture_path", None)
 
     return user_data
 
@@ -525,12 +538,19 @@ async def get_profile_picture(payload: dict) -> dict:
 
     # Convert profile picture to Base64 using the utility method
     try:
-        profile_picture_base64 = encode_path_to_base64(
+        profile_picture_base64 = await encode_path_to_base64(
             user.profile_picture_path
         )
-        return {"profile_picture": profile_picture_base64}
+        if (
+            profile_picture_base64
+            == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+        ):
+            return {"profile_picture": None}
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error encoding profile picture: {str(e)}",
         )
+
+    return {"profile_picture": profile_picture_base64}

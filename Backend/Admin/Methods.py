@@ -317,7 +317,7 @@ async def request_admin_password_reset(email: str) -> dict:
 # Get Profile Picture
 async def get_admin_profile_picture(payload: dict) -> dict:
     """
-    Retrieves the profile picture for an admin.
+    Retrieves the profile picture for an admin, ensuring proper handling of invalid paths.
     """
     admin_id = payload.get("user_id")
     admin = await Admin.get_or_none(id=admin_id)
@@ -330,7 +330,16 @@ async def get_admin_profile_picture(payload: dict) -> dict:
     if not admin.profile_picture_path:
         return {"message": "No profile picture available."}
 
-    profile_picture_base64 = encode_path_to_base64(admin.profile_picture_path)
+    # Encode the profile picture path
+    profile_picture_base64 = await encode_path_to_base64(
+        admin.profile_picture_path
+    )
+    if (
+        profile_picture_base64
+        == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+    ):
+        return {"profile_picture": None}
+
     return {"profile_picture": profile_picture_base64}
 
 
