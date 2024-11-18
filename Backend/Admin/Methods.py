@@ -225,7 +225,10 @@ async def upload_admin_profile_picture(
 
     await file.seek(0)
 
-    file_path = os.path.join(directory, f"{admin_id}_{file.filename}")
+    file_path = os.path.join(
+        directory,
+        f"{config("ADMIN_PROFILE_PICTURE_PREFIX")}_{admin_id}_{file.filename}",
+    )
     with open(file_path, "wb") as buffer:
         buffer.write(file_size)
 
