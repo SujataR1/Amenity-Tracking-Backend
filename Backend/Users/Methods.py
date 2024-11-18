@@ -489,7 +489,10 @@ async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
     await file.seek(0)
 
     # Create the file path
-    file_path = os.path.join(directory, f"{user_id}_{file.filename}")
+    file_path = os.path.join(
+        directory,
+        f"{config("USER_PROFILE_PICTURE_PREFIX")}_{user_id}_{file.filename}",
+    )
 
     # Save the file to the directory
     with open(file_path, "wb") as buffer:
