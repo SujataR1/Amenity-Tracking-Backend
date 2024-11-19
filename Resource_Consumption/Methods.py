@@ -72,7 +72,6 @@ async def get_electricity_consumption(
     try:
         limit = data.limit
         years = await parse_limit_to_years(limit)
-        print("Parsed Years:", years)  # Debug years list
 
         if data.month and data.year:
             record = await ElectricityConsumption.get(
@@ -89,7 +88,6 @@ async def get_electricity_consumption(
                 .all()
             )
 
-            print("Generated Records:", records)  # Debug records
             return {"records": records}
 
         elif data.year and not data.month:
