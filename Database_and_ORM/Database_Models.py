@@ -154,3 +154,123 @@ class Admin(Model):
     class Meta:
         table = "admin"
         ordering = ["created_at"]
+
+
+class ElectricityConsumption(Model):
+    id = fields.UUIDField(pk=True)  # Primary key field, auto-generated UUID
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="electricity_consumption",
+        on_delete=fields.CASCADE,
+    )  # Relates to User model
+    month = fields.CharEnumField(
+        MonthEnum
+    )  # Integer field to store the month (1-12)
+    year = fields.IntField()  # Integer field to store the year
+    electricity_consumption = (
+        fields.FloatField()
+    )  # Field to store electricity consumption in kWh
+    created_at = fields.DatetimeField(
+        auto_now_add=True
+    )  # Automatically adds timestamp when created
+    updated_at = fields.DatetimeField(
+        auto_now=True
+    )  # Automatically updates timestamp when modified
+
+    class Meta:
+        table = "electricity_consumption"
+        unique_together = (
+            "user",
+            "month",
+            "year",
+        )  # Ensures unique entries for a user for a specific month and year
+
+
+class WaterConsumption(Model):
+    id = fields.UUIDField(pk=True)  # Primary key field, auto-generated UUID
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="water_consumption",
+        on_delete=fields.CASCADE,
+    )  # Relates to User model
+    month = fields.CharEnumField(
+        MonthEnum
+    )  # Integer field to store the month (1-12)
+    year = fields.IntField()  # Integer field to store the year
+    electricity_consumption = (
+        fields.FloatField()
+    )  # Field to store electricity consumption in kWh
+    created_at = fields.DatetimeField(
+        auto_now_add=True
+    )  # Automatically adds timestamp when created
+    updated_at = fields.DatetimeField(
+        auto_now=True
+    )  # Automatically updates timestamp when modified
+
+    class Meta:
+        table = "water_consumption"
+        unique_together = (
+            "user",
+            "month",
+            "year",
+        )  # Ensures unique entries for a user for a specific month and year
+
+
+class GasConsumption(Model):
+    id = fields.UUIDField(pk=True)  # Primary key field, auto-generated UUID
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="gas_consumption",
+        on_delete=fields.CASCADE,
+    )  # Relates to User model
+    month = fields.CharEnumField(
+        MonthEnum
+    )  # Integer field to store the month (1-12)
+    year = fields.IntField()  # Integer field to store the year
+    gas_consumption = (
+        fields.FloatField()
+    )  # Field to store electricity consumption in kWh
+    created_at = fields.DatetimeField(
+        auto_now_add=True
+    )  # Automatically adds timestamp when created
+    updated_at = fields.DatetimeField(
+        auto_now=True
+    )  # Automatically updates timestamp when modified
+
+    class Meta:
+        table = "gas_consumption"
+        unique_together = (
+            "user",
+            "month",
+            "year",
+        )  # Ensures unique entries for a user for a specific month and year
+
+
+class FuelConsumption(Model):
+    id = fields.UUIDField(pk=True)  # Primary key field, auto-generated UUID
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="fuel_consumption",
+        on_delete=fields.CASCADE,
+    )  # Relates to User model
+    month = fields.CharEnumField(
+        MonthEnum
+    )  # Integer field to store the month (1-12)
+    year = fields.IntField()  # Integer field to store the year
+    fuel_consumption = (
+        fields.FloatField()
+    )  # Field to store electricity consumption in kWh
+    created_at = fields.DatetimeField(
+        auto_now_add=True
+    )  # Automatically adds timestamp when created
+    updated_at = fields.DatetimeField(
+        auto_now=True
+    )  # Automatically updates timestamp when modified
+
+    class Meta:
+        table = "fuel_consumption"
+        unique_together = (
+            "user",
+            "month",
+            "year",
+        )  # Ensures unique entries for a user for a specific month and year
