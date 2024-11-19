@@ -21,15 +21,11 @@ async def create_water_record(
             response = await create_water_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -44,15 +40,11 @@ async def update_water_record(
             response = await update_water_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -67,15 +59,11 @@ async def delete_water_record(
             response = await delete_water_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -86,14 +74,10 @@ async def get_water_records(data: GetConsumption, payload=Depends(verify_jwt)):
     if user_id:
         try:
             response = await get_water_consumption(user_id=user_id, data=data)
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response

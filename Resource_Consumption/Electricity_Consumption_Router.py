@@ -21,15 +21,11 @@ async def create_electricity_record(
             response = await create_electricity_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -44,15 +40,10 @@ async def update_electricity_record(
             response = await update_electricity_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -67,15 +58,11 @@ async def delete_electricity_record(
             response = await delete_electricity_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -90,14 +77,10 @@ async def get_electricity_records(
             response = await get_electricity_consumption(
                 user_id=user_id, data=data
             )
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
