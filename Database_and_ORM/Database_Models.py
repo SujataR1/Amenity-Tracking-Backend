@@ -197,7 +197,7 @@ class WaterConsumption(Model):
         MonthEnum
     )  # Integer field to store the month (1-12)
     year = fields.IntField()  # Integer field to store the year
-    electricity_consumption = (
+    water_consumption = (
         fields.FloatField()
     )  # Field to store electricity consumption in kWh
     created_at = fields.DatetimeField(
