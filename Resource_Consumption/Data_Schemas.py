@@ -19,8 +19,8 @@ class MonthEnum(str, Enum):
 
 
 class ConsumptionBase(BaseModel):
-    month: Optional[MonthEnum]
-    year: Optional[int]
+    month: Optional[MonthEnum] = None
+    year: Optional[int] = None
 
 
 class CreateConsumption(ConsumptionBase):
@@ -32,4 +32,4 @@ class UpdateConsumption(CreateConsumption):
 
 
 class GetConsumption(ConsumptionBase):
-    pass
+    limit: Optional[str]

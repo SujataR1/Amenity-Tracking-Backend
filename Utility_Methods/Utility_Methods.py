@@ -11,6 +11,7 @@ import base64
 import os
 from typing import Union, Dict
 from mimetypes import guess_type
+from typing import Optional
 
 
 async def get_token_from_authorization_header_value(
@@ -157,3 +158,48 @@ async def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
 
     # Path is neither a file nor a directory
     return "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
+
+
+async def parse_limit_to_years(limit: Optional[str]) -> list:
+    """
+    Parses the `limit` parameter into a sorted list of valid years.
+    Supports:
+        - Single years: "2021"
+        - Year ranges: "2021-2025"
+        - Combinations: "2021,2023-2025"
+    """
+    if not limit:
+        return []
+
+    years = []
+    current_year = datetime.now().year
+
+    try:
+        for part in limit.split(","):
+            if "-" in part:  # Handle ranges like "2021-2025"
+                start, end = map(int, part.split("-"))
+
+                # Validate range boundaries
+                if start > end:
+                    raise ValueError(f"Invalid range: {start}-{end}")
+                if start < 2000 or end > current_year:
+                    raise ValueError(
+                        f"Year range out of bounds: {start}-{end} (Valid: 1900-{current_year})"
+                    )
+
+                years.extend(range(start, end + 1))
+
+            else:  # Handle single years like "2021"
+                year = int(part)
+
+                # Validate single year boundaries
+                if year < 1900 or year > current_year:
+                    raise ValueError(
+                        f"Year out of bounds: {year} (Valid: 1900-{current_year})"
+                    )
+                years.append(year)
+
+        return sorted(set(years))  # Remove duplicates and sort
+
+    except ValueError as e:
+        raise ValueError(f"Invalid limit format or year range: {e}")
