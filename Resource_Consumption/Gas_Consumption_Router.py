@@ -19,15 +19,10 @@ async def create_gas_record(
     if user_id:
         try:
             response = await create_gas_consumption(user_id=user_id, data=data)
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=response["error"],
-                )
-        except:
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -40,15 +35,10 @@ async def update_gas_record(
     if user_id:
         try:
             response = await update_gas_consumption(user_id=user_id, data=data)
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -59,15 +49,10 @@ async def delete_gas_record(data: GetConsumption, payload=Depends(verify_jwt)):
     if user_id:
         try:
             response = await delete_gas_consumption(user_id=user_id, data=data)
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
 
@@ -78,14 +63,9 @@ async def get_gas_records(data: GetConsumption, payload=Depends(verify_jwt)):
     if user_id:
         try:
             response = await get_gas_consumption(user_id=user_id, data=data)
-            if "error" in response:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=response["error"],
-                )
-        except:
+        except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error: {e}",
             )
     return response
