@@ -32,4 +32,4 @@ class UpdateConsumption(CreateConsumption):
 
 
 class GetConsumption(ConsumptionBase):
-    limit: Optional[str]
+    limit: Optional[str] = None
