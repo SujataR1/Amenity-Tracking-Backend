@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
 from .Data_Schemas import CreateConsumption, UpdateConsumption, GetConsumption
 from .Methods import (
     create_electricity_consumption,
@@ -69,7 +70,8 @@ async def delete_electricity_record(
 
 @Electricity_Consumption_Router.get("/", status_code=status.HTTP_200_OK)
 async def get_electricity_records(
-    data: GetConsumption, payload=Depends(verify_jwt)
+    data: GetConsumption,
+    payload=Depends(verify_jwt),
 ):
     user_id = payload.get("user_id")
     if user_id:

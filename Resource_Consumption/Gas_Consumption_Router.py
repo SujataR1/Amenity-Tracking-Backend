@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
 from .Data_Schemas import CreateConsumption, UpdateConsumption, GetConsumption
 from .Methods import (
     create_gas_consumption,
@@ -58,11 +59,17 @@ async def delete_gas_record(data: GetConsumption, payload=Depends(verify_jwt)):
 
 
 @Gas_Consumption_Router.get("/", status_code=status.HTTP_200_OK)
-async def get_gas_records(data: GetConsumption, payload=Depends(verify_jwt)):
+async def get_gas_records(
+    data: GetConsumption,
+    limit: Optional[str] = None,
+    payload=Depends(verify_jwt),
+):
     user_id = payload.get("user_id")
     if user_id:
         try:
-            response = await get_gas_consumption(user_id=user_id, data=data)
+            response = await get_gas_consumption(
+                user_id=user_id, data=data, limit=limit
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

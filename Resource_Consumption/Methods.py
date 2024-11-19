@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from tortoise.exceptions import DoesNotExist, IntegrityError
-from typing import List, Union
+from typing import List, Union, Optional
 from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
     GasConsumption,
@@ -12,6 +12,7 @@ from .Data_Schemas import (
     UpdateConsumption,
     GetConsumption,
 )
+from Utility_Methods.Utility_Methods import parse_limit_to_years
 
 
 async def create_electricity_consumption(
@@ -67,25 +68,55 @@ async def delete_electricity_consumption(
 
 async def get_electricity_consumption(
     user_id: str, data: GetConsumption
-) -> Union[List[dict], dict]:
-    if data.month and data.year:
-        try:
+) -> dict:
+    try:
+        limit = data.limit
+        years = await parse_limit_to_years(limit)
+        print("Parsed Years:", years)  # Debug years list
+
+        if data.month and data.year:
             record = await ElectricityConsumption.get(
                 user_id=user_id, month=data.month, year=data.year
             )
             return {"record": record}
-        except DoesNotExist:
-            return {"error": "No record found for the specified criteria."}
-    else:
-        six_months_ago = datetime.now() - timedelta(days=180)
-        records = (
-            await ElectricityConsumption.filter(
-                user_id=user_id, created_at__gte=six_months_ago
+
+        elif data.month and not data.year:
+            records = (
+                await ElectricityConsumption.filter(
+                    user_id=user_id, month=data.month, year__in=years
+                )
+                .order_by("year")
+                .all()
             )
-            .order_by("-created_at")
-            .all()
-        )
-        return {"records": records}
+
+            print("Generated Records:", records)  # Debug records
+            return {"records": records}
+
+        elif data.year and not data.month:
+            records = (
+                await ElectricityConsumption.filter(
+                    user_id=user_id, year=data.year
+                )
+                .order_by("month")
+                .all()
+            )
+            return {"records": records}
+
+        else:
+            six_months_ago = datetime.now() - timedelta(days=180)
+            records = (
+                await ElectricityConsumption.filter(
+                    user_id=user_id, created_at__gte=six_months_ago
+                )
+                .order_by("-created_at")
+                .all()
+            )
+            return {"records": records}
+
+    except DoesNotExist:
+        return {"error": "No records found for the specified criteria."}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # Gas Consumption Methods
@@ -139,24 +170,59 @@ async def delete_gas_consumption(user_id: str, data: GetConsumption) -> dict:
 async def get_gas_consumption(
     user_id: str, data: GetConsumption
 ) -> Union[List[dict], dict]:
-    if data.month and data.year:
-        try:
+    """
+    Fetch gas consumption records based on the input criteria:
+    - If both `month` and `year` are provided, return the specific record.
+    - If only `year` is provided, return records for all months in that year.
+    - If only `month` is provided, return records for the specified month across multiple years based on the `limit`.
+    - If neither is provided, return records for the last 6 months.
+    """
+    try:
+        limit = data.limit
+        if data.month and data.year:
+            # Fetch specific record for the given month and year
             record = await GasConsumption.get(
                 user_id=user_id, month=data.month, year=data.year
             )
             return {"record": record}
-        except DoesNotExist:
-            return {"error": "No record found for the specified criteria."}
-    else:
-        six_months_ago = datetime.now() - timedelta(days=180)
-        records = (
-            await GasConsumption.filter(
-                user_id=user_id, created_at__gte=six_months_ago
+
+        elif data.year and not data.month:
+            # Fetch all records for the specified year
+            records = (
+                await GasConsumption.filter(user_id=user_id, year=data.year)
+                .order_by("month")
+                .all()
             )
-            .order_by("-created_at")
-            .all()
-        )
-        return {"records": records}
+            return {"records": records}
+
+        elif data.month and not data.year:
+            # Fetch records for the specified month across multiple years based on limit
+            years = await parse_limit_to_years(limit)
+            records = (
+                await GasConsumption.filter(
+                    user_id=user_id, month=data.month, year__in=years
+                )
+                .order_by("year")
+                .all()
+            )
+            return {"records": records}
+
+        else:
+            # Default: Fetch records for the last 6 months
+            six_months_ago = datetime.now() - timedelta(days=180)
+            records = (
+                await GasConsumption.filter(
+                    user_id=user_id, created_at__gte=six_months_ago
+                )
+                .order_by("-created_at")
+                .all()
+            )
+            return {"records": records}
+
+    except DoesNotExist:
+        return {"error": "No records found for the specified criteria."}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def create_water_consumption(
@@ -219,27 +285,58 @@ async def get_water_consumption(
     user_id: str, data: GetConsumption
 ) -> Union[List[dict], dict]:
     """
-    Retrieves water consumption records for the user. If month and year are provided, retrieves a specific record.
-    Defaults to the latest 6 months if no month and year are provided.
+    Fetch water consumption records based on the input criteria:
+    - If both `month` and `year` are provided, return the specific record.
+    - If only `year` is provided, return records for all months in that year.
+    - If only `month` is provided, return records for the specified month across multiple years based on the `limit`.
+    - If neither is provided, return records for the last 6 months.
     """
-    if data.month and data.year:
-        try:
+    try:
+        limit = data.limit
+        if data.month and data.year:
+            # Fetch specific record for the given month and year
             record = await WaterConsumption.get(
                 user_id=user_id, month=data.month, year=data.year
             )
             return {"record": record}
-        except DoesNotExist:
-            return {"error": "No record found for the specified criteria."}
-    else:
-        six_months_ago = datetime.now() - timedelta(days=180)
-        records = (
-            await WaterConsumption.filter(
-                user_id=user_id, created_at__gte=six_months_ago
+
+        elif data.year and not data.month:
+            # Fetch all records for the specified year
+            records = (
+                await WaterConsumption.filter(user_id=user_id, year=data.year)
+                .order_by("month")
+                .all()
             )
-            .order_by("-created_at")
-            .all()
-        )
-        return {"records": records}
+            return {"records": records}
+
+        elif data.month and not data.year:
+            # Fetch records for the specified month across multiple years based on limit
+            years = await parse_limit_to_years(limit)
+            records = (
+                await WaterConsumption.filter(
+                    user_id=user_id, month=data.month, year__in=years
+                )
+                .order_by("year")
+                .all()
+            )
+            return {"records": records}
+
+        else:
+            # Default: Fetch records for the last 6 months
+            six_months_ago = datetime.now() - timedelta(days=180)
+            records = (
+                await WaterConsumption.filter(
+                    user_id=user_id, created_at__gte=six_months_ago
+                )
+                .order_by("-created_at")
+                .all()
+            )
+            return {"records": records}
+
+    except DoesNotExist:
+        return {"error": "No records found for the specified criteria."}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # Fuel Consumption Methods
@@ -305,24 +402,55 @@ async def get_fuel_consumption(
     user_id: str, data: GetConsumption
 ) -> Union[List[dict], dict]:
     """
-    Retrieves fuel consumption records for the user. If month and year are provided, retrieves a specific record.
-    Defaults to the latest 6 months if no month and year are provided.
+    Retrieves fuel consumption records for the user based on the following:
+    - If both `month` and `year` are provided, returns the specific record.
+    - If only `year` is provided, returns records for all months in that year.
+    - If only `month` is provided, returns records for the specified month across multiple years based on the `limit`.
+    - If neither is provided, defaults to the latest 6 months.
     """
-    if data.month and data.year:
-        try:
+    try:
+        limit = data.limit
+        if data.month and data.year:
+            # Fetch specific record for the given month and year
             record = await FuelConsumption.get(
                 user_id=user_id, month=data.month, year=data.year
             )
             return {"record": record}
-        except DoesNotExist:
-            return {"error": "No record found for the specified criteria."}
-    else:
-        six_months_ago = datetime.now() - timedelta(days=180)
-        records = (
-            await FuelConsumption.filter(
-                user_id=user_id, created_at__gte=six_months_ago
+
+        elif data.year and not data.month:
+            # Fetch all records for the specified year
+            records = (
+                await FuelConsumption.filter(user_id=user_id, year=data.year)
+                .order_by("month")
+                .all()
             )
-            .order_by("-created_at")
-            .all()
-        )
-        return {"records": records}
+            return {"records": records}
+
+        elif data.month and not data.year:
+            # Fetch records for the specified month across multiple years based on limit
+            years = await parse_limit_to_years(limit)
+            records = (
+                await FuelConsumption.filter(
+                    user_id=user_id, month=data.month, year__in=years
+                )
+                .order_by("year")
+                .all()
+            )
+            return {"records": records}
+
+        else:
+            # Default: Fetch records for the last 6 months
+            six_months_ago = datetime.now() - timedelta(days=180)
+            records = (
+                await FuelConsumption.filter(
+                    user_id=user_id, created_at__gte=six_months_ago
+                )
+                .order_by("-created_at")
+                .all()
+            )
+            return {"records": records}
+
+    except DoesNotExist:
+        return {"error": "No records found for the specified criteria."}
+    except Exception as e:
+        return {"error": str(e)}
