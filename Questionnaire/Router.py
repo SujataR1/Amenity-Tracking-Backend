@@ -25,7 +25,6 @@ async def get_questionnaire_endpoint():
 
 
 @Questionnaire_Router.post("/answer", status_code=status.HTTP_201_CREATED)
-@Questionnaire_Router.post("/answer", status_code=status.HTTP_201_CREATED)
 async def create_questionnaire_answer_endpoint(
     answer_data: QuestionnaireAnswerCreate, payload: dict = Depends(verify_jwt)
 ):
