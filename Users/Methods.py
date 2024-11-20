@@ -37,9 +37,8 @@ async def create_user(user_data: UserCreate) -> Union[User, dict]:
     )
 
     try:
-        await user.save()
-        # return {"message": "Account succesfully created!"}
         count = await update_admin_user_count()
+        await user.save()
         if count:
             return {"message": "Account succesfully created!"}
     except IntegrityError:
@@ -167,20 +166,13 @@ async def delete_user(payload: dict, authorization: str):
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
+    count = await update_admin_user_count()
     await user.delete()
 
     # Blacklist the token
     token = await get_token_from_authorization_header_value(authorization)
     blacklisted = await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
     if blacklisted:
-        # if blacklisted:
-        #     return {"message": "User deleted successfully and token blacklisted"}
-        # else:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        #         detail="Something went wrong on our end",
-        #     )
-        count = await update_admin_user_count()
         if count:
             return {
                 "message": "User deleted successfully and token blacklisted"
