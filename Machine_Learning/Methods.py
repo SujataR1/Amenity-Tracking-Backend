@@ -30,8 +30,9 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 
     async with in_transaction():
         # Fetch the user's 'nineteen' value and ZIP code
-        user_data = await QuestionnaireAnswers.get(user_id=user_id)
-        user_nineteen = user_data.nineteen
+        user_questionaire_data = await QuestionnaireAnswers.get(user_id=user_id)
+        user_data = await User.get(id=user_id)
+        user_nineteen = user_questionaire_data.nineteen
         user_zip = await user_data.user.pin_code
 
         # Update averages for 'nineteen'
