@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 import joblib
 from sklearn.metrics import mean_squared_error
-from tortoise.expressions import Avg
+from tortoise.functions import Avg
 from Machine_Learning.Methods import feature_engineering
 from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
