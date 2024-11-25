@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
+from datetime import datetime
 from .Data_Schemas import CreateConsumption, UpdateConsumption, GetConsumption
 from .Methods import (
     create_electricity_consumption,
-    update_electricity_consumption,
-    delete_electricity_consumption,
+    # update_electricity_consumption,
+    # delete_electricity_consumption,
     get_electricity_consumption,
 )
 from Utility_Methods.Utility_Methods import verify_jwt
+from Machine_Learning.Methods import update_averages_on_new_entry
 
 Electricity_Consumption_Router = APIRouter()
 
@@ -23,41 +25,11 @@ async def create_electricity_record(
                 user_id=user_id, data=data
             )
 
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error: {e}",
-            )
-    return response
-
-
-@Electricity_Consumption_Router.patch("/", status_code=status.HTTP_200_OK)
-async def update_electricity_record(
-    data: UpdateConsumption, payload=Depends(verify_jwt)
-):
-    user_id = payload.get("user_id")
-    if user_id:
-        try:
-            response = await update_electricity_consumption(
-                user_id=user_id, data=data
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error: {e}",
-            )
-    return response
-
-
-@Electricity_Consumption_Router.delete("/", status_code=status.HTTP_200_OK)
-async def delete_electricity_record(
-    data: GetConsumption, payload=Depends(verify_jwt)
-):
-    user_id = payload.get("user_id")
-    if user_id:
-        try:
-            response = await delete_electricity_consumption(
-                user_id=user_id, data=data
+            await update_averages_on_new_entry(
+                user_id=user_id,
+                year=data.year,
+                month=data.month,
+                new_consumption=data.consumption,
             )
 
         except Exception as e:
@@ -66,6 +38,43 @@ async def delete_electricity_record(
                 detail=f"Error: {e}",
             )
     return response
+
+
+# @Electricity_Consumption_Router.patch("/", status_code=status.HTTP_200_OK)
+# async def update_electricity_record(
+#     data: UpdateConsumption, payload=Depends(verify_jwt)
+# ):
+#     user_id = payload.get("user_id")
+#     if user_id:
+#         try:
+#             response = await update_electricity_consumption(
+#                 user_id=user_id, data=data
+#             )
+#         except Exception as e:
+#             raise HTTPException(
+#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                 detail=f"Error: {e}",
+#             )
+#     return response
+
+
+# @Electricity_Consumption_Router.delete("/", status_code=status.HTTP_200_OK)
+# async def delete_electricity_record(
+#     data: GetConsumption, payload=Depends(verify_jwt)
+# ):
+#     user_id = payload.get("user_id")
+#     if user_id:
+#         try:
+#             response = await delete_electricity_consumption(
+#                 user_id=user_id, data=data
+#             )
+
+#         except Exception as e:
+#             raise HTTPException(
+#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                 detail=f"Error: {e}",
+#             )
+#     return response
 
 
 @Electricity_Consumption_Router.get("/", status_code=status.HTTP_200_OK)
