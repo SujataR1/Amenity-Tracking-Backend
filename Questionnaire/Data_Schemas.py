@@ -18,6 +18,14 @@ class MonthEnum(str, Enum):
     december = "December"
 
 
+class ClimateEnum(str, Enum):
+    HOT = "Hot"
+    COLD = "Cold"
+    HUMID = "Humid"
+    DRY = "Dry"
+    TEMPERATE = "Temperate"
+
+
 class QuestionnaireFields(Enum):
     ONE = "one"
     TWO = "two"
@@ -37,6 +45,7 @@ class QuestionnaireFields(Enum):
     SIXTEEN = "sixteen"
     SEVENTEEN = "seventeen"
     EIGHTEEN = "eighteen"
+    NINETEEN = "nineteen"
 
 
 class QuestionnaireEnum(str, Enum):
@@ -58,6 +67,7 @@ class QuestionnaireEnum(str, Enum):
     SIXTEEN = "If you are living in a villa, do you have a garden?"
     SEVENTEEN = "During which month do you generally go for vacations?"
     EIGHTEEN = "How long is your vacation per trip?"
+    NINETEEN = "What's the climate there like?"
 
 
 class QuestionnaireAnswerCreate(BaseModel):
@@ -79,6 +89,7 @@ class QuestionnaireAnswerCreate(BaseModel):
     sixteen: bool  # Do you have a garden if living in a villa?
     seventeen: MonthEnum  # Month(s) generally taken for vacation
     eighteen: int  # Duration of vacation per trip (in days)
+    nineteen: ClimateEnum  # Climate
 
 
 class QuestionnaireAnswerUpdate(BaseModel):
@@ -108,3 +119,4 @@ class QuestionnaireAnswerUpdate(BaseModel):
     sixteen: Optional[bool]  # Do you have a garden if living in a villa?
     seventeen: Optional[MonthEnum]  # Month(s) generally taken for vacation
     eighteen: Optional[int]  # Duration of vacation per trip (in days)
+    nineteen: Optional[ClimateEnum]  # Climate
