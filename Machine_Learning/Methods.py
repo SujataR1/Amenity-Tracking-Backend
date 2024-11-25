@@ -10,11 +10,13 @@ from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
     QuestionnaireAnswers,
     User,
+    Admin,
 )
 from decouple import config
 from os import path, makedirs
 import time
 import json
+from fastapi import HTTPException, status
 
 # ---------------------------------------------
 # Method 1: Update Averages Dynamically
@@ -56,11 +58,18 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 # ---------------------------------------------
 
 
-async def retrain_model():
+async def retrain_model(payload: dict):
     """
     Retrains the electricity consumption prediction model and updates status in Electricity_Model_Update_Status.json.
     """
     # Paths
+    admin_id = payload.get("user_id")
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins are authorized to view model training status.",
+        )
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = path.join(model_dir, "Electricity_Consumption_Model.pkl")
     status_json_path = path.join(
@@ -79,6 +88,8 @@ async def retrain_model():
                     "last_updated": None,
                     "update_duration": None,
                     "days_since_last_update": None,
+                    "mse": None,
+                    "rmse": None,
                     "status": "No model trained yet",
                 },
                 status_file,
@@ -141,6 +152,11 @@ async def retrain_model():
     )
     model.fit(X, y)
 
+    # Calculate MSE and RMSE
+    y_pred = model.predict(X)
+    mse = mean_squared_error(y, y_pred)
+    rmse = mse**0.5
+
     # Save the model
     joblib.dump(model, model_path)
 
@@ -167,12 +183,15 @@ async def retrain_model():
         "last_updated": last_updated,
         "update_duration": f"{duration} seconds",
         "days_since_last_update": days_since_last_update,
+        "mse": round(mse, 4),
+        "rmse": round(rmse, 4),
         "status": "Model successfully retrained",
     }
     with open(status_json_path, "w") as status_file:
         json.dump(status, status_file, indent=4)
 
     print(f"Model retrained and saved to {model_path}")
+    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}")
     return model_path
 
 

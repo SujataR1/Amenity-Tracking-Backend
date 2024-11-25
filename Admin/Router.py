@@ -38,7 +38,9 @@ from Admin.Methods import (
     verify_email_otp,
     view_user_data,
     update_admin_user_count,
+    get_training_status_from_file,
 )
+from Machine_Learning.Methods import retrain_model
 
 Admin_Router = APIRouter()
 
@@ -232,3 +234,32 @@ async def generate_otp_endpoint(otp_request: OTPRequest):
 @Admin_Router.post("/refresh-user-count", status_code=status.HTTP_200_OK)
 async def refresh_user_count_endpoint(payload: dict = Depends(verify_jwt)):
     return await update_admin_user_count()
+
+
+@Admin_Router.get("/retrain/status")
+async def get_training_status_api(payload: dict = Depends(verify_jwt)):
+    """
+    API to fetch the current training status of the electricity consumption model.
+    """
+    try:
+        # Call the method to fetch training status
+        status = await get_training_status_from_file(payload)
+        return status
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@Admin_Router.post("/retrain")
+async def retrain_model_api(payload: dict = Depends(verify_jwt)):
+    """
+    API to retrain the electricity consumption prediction model.
+    """
+    try:
+        result = await retrain_model(payload)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error during model retraining: {str(e)}"
+        )
