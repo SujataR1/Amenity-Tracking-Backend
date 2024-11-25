@@ -1,4 +1,7 @@
 import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 import joblib
@@ -10,17 +13,24 @@ from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
     QuestionnaireAnswers,
     User,
-    Admin,
 )
+import json
 from decouple import config
 from os import path, makedirs
-import time
+from time import time
 import json
 from fastapi import HTTPException, status
 
 # ---------------------------------------------
 # Method 1: Update Averages Dynamically
 # ---------------------------------------------
+
+
+async def load_gbm_config(
+    config_path="Machine_Learning/Models/gbm_config.json",
+):
+    with open(config_path, "r") as config_file:
+        return json.load(config_file)
 
 
 async def update_averages_on_new_entry(user_id, year, month, new_consumption):
@@ -61,170 +71,167 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 # ---------------------------------------------
 
 
-async def retrain_model(payload: dict):
+async def retrain_model():
     """
     Retrains the electricity consumption prediction model and updates status in Electricity_Model_Update_Status.json.
+    Implements regularization and reduced model complexity to address overfitting.
     """
-    # Paths
-    admin_id = payload.get("user_id")
-    admin = await Admin.get_or_none(id=admin_id)
-    if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins are authorized to view model training status.",
-        )
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = path.join(model_dir, "Electricity_Consumption_Model.pkl")
     status_json_path = path.join(
         model_dir, "Electricity_Model_Update_Status.json"
     )
 
-    # Ensure the directory exists
     if not path.exists(model_dir):
         makedirs(model_dir, exist_ok=True)
 
-    # Initialize or update status file to reflect "Starting"
-    if not path.exists(status_json_path):
-        with open(status_json_path, "w") as status_file:
-            json.dump(
-                {
-                    "last_updated": None,
-                    "update_duration": None,
-                    "days_since_last_update": None,
-                    "mse": None,
-                    "rmse": None,
-                    "status": "Starting model training",
-                },
-                status_file,
-                indent=4,
-            )
-    else:
-        with open(status_json_path, "r+") as status_file:
-            status = json.load(status_file)
-            status["status"] = "Starting model training"
-            status_file.seek(0)
-            json.dump(status, status_file, indent=4)
-            status_file.truncate()
-
-    # Start tracking the time for retraining
     start_time = time()
-
-    # Update status to "In Progress"
-    with open(status_json_path, "r+") as status_file:
-        status = json.load(status_file)
-        status["status"] = "Model training in progress"
-        status_file.seek(0)
-        json.dump(status, status_file, indent=4)
-        status_file.truncate()
+    max_duration = 6 * 3600  # 6 hours in seconds
+    rmse = float("inf")
+    iteration = 0
 
     try:
-        # Fetch updated data
-        consumption_data = await ElectricityConsumption.all().values(
-            "user_id", "year", "month", "electricity_consumption"
-        )
-        questionnaire_data = await QuestionnaireAnswers.all().values(
-            "user_id", "nineteen", "one", "two", "three", "seven", "eighteen"
-        )
-        user_data = await User.all().values("id", "pin_code")
+        while rmse > 5 and (time() - start_time) < max_duration:
+            iteration += 1
+            print(f"Retraining iteration {iteration}...")
 
-        # Merge and process data
-        merged_data = pd.merge(
-            pd.DataFrame(consumption_data),
-            pd.DataFrame(questionnaire_data),
-            on="user_id",
-            how="left",
-        )
-        merged_data = pd.merge(
-            merged_data,
-            pd.DataFrame(user_data),
-            left_on="user_id",
-            right_on="id",
-            how="left",
-        )
-        processed_data = feature_engineering(merged_data)
+            # Fetch data in batches
+            offset = 0
+            batch_size = 25
+            merged_data = []
 
-        # Define features and target
-        X = processed_data[
-            [
-                "month",
-                "nineteen",
-                "zip_avg",
-                "zip_trend",
-                "nineteen_avg",
-                "nineteen_trend",
-                "prev_consumption",
-                "one",
-                "two",
-                "three",
-                "seven",
-                "eighteen",
+            while True:
+                users_batch = (
+                    await User.all()
+                    .offset(offset)
+                    .limit(batch_size)
+                    .values("id", "pin_code")
+                )
+                if not users_batch:
+                    break
+
+                user_ids = [user["id"] for user in users_batch]
+                consumption_batch = await ElectricityConsumption.filter(
+                    user_id__in=user_ids
+                ).values("user_id", "year", "month", "electricity_consumption")
+                questionnaire_batch = await QuestionnaireAnswers.filter(
+                    user_id__in=user_ids
+                ).values(
+                    "user_id",
+                    "nineteen",
+                    "one",
+                    "two",
+                    "three",
+                    "seven",
+                    "eighteen",
+                )
+
+                batch_data = pd.merge(
+                    pd.DataFrame(consumption_batch),
+                    pd.DataFrame(questionnaire_batch),
+                    on="user_id",
+                    how="left",
+                )
+                batch_data = pd.merge(
+                    batch_data,
+                    pd.DataFrame(users_batch),
+                    left_on="user_id",
+                    right_on="id",
+                    how="left",
+                )
+                merged_data.append(batch_data)
+                offset += batch_size
+
+            if merged_data:
+                final_data = pd.concat(merged_data, ignore_index=True)
+            else:
+                raise ValueError("No data available for training.")
+
+            processed_data = feature_engineering(final_data)
+
+            # Define features and target
+            X = processed_data[
+                [
+                    "month",
+                    "nineteen",
+                    "zip_avg",
+                    "zip_trend",
+                    "nineteen_avg",
+                    "nineteen_trend",
+                    "prev_consumption",
+                    "one",
+                    "two",
+                    "three",
+                    "seven",
+                    "eighteen",
+                ]
             ]
-        ]
-        y = processed_data["electricity_consumption"]
+            y = processed_data["electricity_consumption"]
 
-        # One-hot encode categorical features
-        X = pd.get_dummies(X, columns=["nineteen"], drop_first=True)
+            X = pd.get_dummies(X, columns=["nineteen"], drop_first=True)
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
 
-        # Train the model
-        model = GradientBoostingRegressor(
-            n_estimators=500, learning_rate=0.1, max_depth=5, random_state=42
-        )
-        model.fit(X, y)
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_val_scaled = scaler.transform(X_val)
 
-        # Calculate MSE and RMSE
-        y_pred = model.predict(X)
-        mse = mean_squared_error(y, y_pred)
-        rmse = mse**0.5
+            gbm_config = await load_gbm_config()
 
-        # Save the model
-        joblib.dump(model, model_path)
+            model = GradientBoostingRegressor(
+                n_estimators=gbm_config["n_estimators"],
+                learning_rate=gbm_config["learning_rate"],
+                max_depth=gbm_config["max_depth"],
+                random_state=gbm_config["random_state"],
+                subsample=gbm_config["subsample"],
+                min_samples_split=gbm_config["min_samples_split"],
+                min_samples_leaf=gbm_config["min_samples_leaf"],
+                validation_fraction=gbm_config["validation_fraction"],
+                n_iter_no_change=gbm_config["n_iter_no_change"],
+                tol=gbm_config["tol"],
+            )
+            model.fit(X_train_scaled, y_train)
 
-        # End tracking the time for retraining
-        end_time = time()
-        duration = round(end_time - start_time, 2)  # Duration in seconds
+            y_train_pred = model.predict(X_train_scaled)
+            y_val_pred = model.predict(X_val_scaled)
 
-        # Update the status JSON to "Trained"
+            train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+            val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
+
+            print(
+                f"Iteration {iteration}: Train RMSE={train_rmse:.4f}, Val RMSE={val_rmse:.4f}"
+            )
+
+            rmse = val_rmse
+
+            joblib.dump(model, model_path)
+
+            if rmse <= 5:
+                print("Model achieved target RMSE. Training complete.")
+                break
+
+        duration = round(time() - start_time, 2)
         now = datetime.now()
         last_updated = now.strftime("%Y-%m-%d %H:%M:%S")
-        days_since_last_update = None  # First model training
 
-        if path.exists(status_json_path):
-            with open(status_json_path, "r") as status_file:
-                previous_status = json.load(status_file)
-                if previous_status.get("last_updated"):
-                    last_update_date = datetime.strptime(
-                        previous_status["last_updated"], "%Y-%m-%d %H:%M:%S"
-                    )
-                    days_since_last_update = (now - last_update_date).days
-
-        # Save final updated status
         status = {
             "last_updated": last_updated,
             "update_duration": f"{duration} seconds",
-            "days_since_last_update": days_since_last_update,
-            "mse": round(mse, 4),
-            "rmse": round(rmse, 4),
-            "status": "Model training completed",
+            "train_rmse": round(train_rmse, 4),
+            "val_rmse": round(val_rmse, 4),
+            "status": (
+                "Training completed"
+                if rmse <= 5
+                else "Stopped: Time limit reached"
+            ),
+            "iterations": iteration,
         }
         with open(status_json_path, "w") as status_file:
             json.dump(status, status_file, indent=4)
 
-        print(f"Model retrained and saved to {model_path}")
-        print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}")
-        return model_path
-
     except Exception as e:
-        # Update status to "Failed" in case of an error
-        with open(status_json_path, "r+") as status_file:
-            status = json.load(status_file)
-            status["status"] = f"Model training failed: {str(e)}"
-            status_file.seek(0)
-            json.dump(status, status_file, indent=4)
-            status_file.truncate()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Model training failed: {str(e)}",
-        )
+        print(f"Error during training: {str(e)}")
 
 
 # ---------------------------------------------
@@ -253,11 +260,11 @@ def feature_engineering(data):
     data["zip_avg"] = data.groupby(["pin_code", "year"])[
         "electricity_consumption"
     ].transform("mean")
-    data["zip_avg"].fillna(data["nineteen_avg"], inplace=True)
+    data["zip_avg"] = data["zip_avg"].fillna(data["nineteen_avg"])
     data["zip_trend"] = data.groupby("pin_code")["zip_avg"].transform(
         lambda x: x.rolling(window=3, min_periods=1).mean()
     )
-    data["zip_trend"].fillna(data["nineteen_trend"], inplace=True)
+    data["zip_trend"] = data["zip_trend"].fillna(data["nineteen_trend"])
 
     # Create lag features for user-specific patterns
     data = data.sort_values(by=["user_id", "year", "month"])
