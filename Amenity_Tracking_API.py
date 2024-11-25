@@ -4,6 +4,8 @@ from Database_and_ORM.Database_Connector import init_db, close_db
 from Users.Router import User_Router
 from Admin.Router import Admin_Router
 from Questionnaire.Router import Questionnaire_Router
+from Resource_Consumption.Router import Consumption_Router
+from Projections.Router import Projection_Router
 from decouple import config
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware import Middleware
@@ -49,6 +51,8 @@ routers = [
     (User_Router, "/users", ["Users"]),
     (Questionnaire_Router, "/questionnaire", ["Questionnaire"]),
     (Admin_Router, "/admin", ["Admin"]),
+    (Consumption_Router, "/consumption", ["Consumption"]),
+    (Projection_Router, "/projection", ["Projection"]),
 ]
 
 for router, prefix, tags in routers:
