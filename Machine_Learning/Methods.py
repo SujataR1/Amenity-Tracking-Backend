@@ -3,7 +3,7 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 import joblib
 from tortoise.transactions import in_transaction
-from tortoise.expressions import Avg
+from tortoise.functions import Avg
 from datetime import datetime
 import calendar
 from Database_and_ORM.Database_Models import (
