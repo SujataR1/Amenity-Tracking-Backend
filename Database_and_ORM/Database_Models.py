@@ -85,9 +85,7 @@ class QuestionnaireAnswers(Model):
         MonthEnum
     )  # "During which month do you generally go for vacations?"
     eighteen = fields.IntField()  # "How long is your vacation per trip?"
-    climate = fields.CharEnumField(
-        ClimateEnum
-    )  # "What's is the climate there?"
+    climate = fields.CharEnumField(ClimateEnum)  # "What's the climate there?"
 
     class Meta:
         table = "questionnaire_answers"
