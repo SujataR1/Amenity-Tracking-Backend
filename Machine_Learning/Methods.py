@@ -83,7 +83,7 @@ async def retrain_model(payload: dict):
     if not path.exists(model_dir):
         makedirs(model_dir, exist_ok=True)
 
-    # Initialize status file if it doesn't exist
+    # Initialize or update status file to reflect "Starting"
     if not path.exists(status_json_path):
         with open(status_json_path, "w") as status_file:
             json.dump(
@@ -93,109 +93,138 @@ async def retrain_model(payload: dict):
                     "days_since_last_update": None,
                     "mse": None,
                     "rmse": None,
-                    "status": "No model trained yet",
+                    "status": "Starting model training",
                 },
                 status_file,
                 indent=4,
             )
+    else:
+        with open(status_json_path, "r+") as status_file:
+            status = json.load(status_file)
+            status["status"] = "Starting model training"
+            status_file.seek(0)
+            json.dump(status, status_file, indent=4)
+            status_file.truncate()
 
     # Start tracking the time for retraining
     start_time = time()
 
-    # Fetch updated data
-    consumption_data = await ElectricityConsumption.all().values(
-        "user_id", "year", "month", "electricity_consumption"
-    )
-    questionnaire_data = await QuestionnaireAnswers.all().values(
-        "user_id", "nineteen", "one", "two", "three", "seven", "eighteen"
-    )
-    user_data = await User.all().values("id", "pin_code")
-
-    # Merge and process data
-    merged_data = pd.merge(
-        pd.DataFrame(consumption_data),
-        pd.DataFrame(questionnaire_data),
-        on="user_id",
-        how="left",
-    )
-    merged_data = pd.merge(
-        merged_data,
-        pd.DataFrame(user_data),
-        left_on="user_id",
-        right_on="id",
-        how="left",
-    )
-    processed_data = feature_engineering(merged_data)
-
-    # Define features and target
-    X = processed_data[
-        [
-            "month",
-            "nineteen",
-            "zip_avg",
-            "zip_trend",
-            "nineteen_avg",
-            "nineteen_trend",
-            "prev_consumption",
-            "one",
-            "two",
-            "three",
-            "seven",
-            "eighteen",
-        ]
-    ]
-    y = processed_data["electricity_consumption"]
-
-    # One-hot encode categorical features
-    X = pd.get_dummies(X, columns=["nineteen"], drop_first=True)
-
-    # Train the model
-    model = GradientBoostingRegressor(
-        n_estimators=500, learning_rate=0.1, max_depth=5, random_state=42
-    )
-    model.fit(X, y)
-
-    # Calculate MSE and RMSE
-    y_pred = model.predict(X)
-    mse = mean_squared_error(y, y_pred)
-    rmse = mse**0.5
-
-    # Save the model
-    joblib.dump(model, model_path)
-
-    # End tracking the time for retraining
-    end_time = time()
-    duration = round(end_time - start_time, 2)  # Duration in seconds
-
-    # Update the status JSON
-    now = datetime.now()
-    last_updated = now.strftime("%Y-%m-%d %H:%M:%S")
-    days_since_last_update = None  # First model training
-
-    if path.exists(status_json_path):
-        with open(status_json_path, "r") as status_file:
-            previous_status = json.load(status_file)
-            if previous_status.get("last_updated"):
-                last_update_date = datetime.strptime(
-                    previous_status["last_updated"], "%Y-%m-%d %H:%M:%S"
-                )
-                days_since_last_update = (now - last_update_date).days
-
-    # Save updated status
-    status = {
-        "last_updated": last_updated,
-        "update_duration": f"{duration} seconds",
-        "days_since_last_update": days_since_last_update,
-        "mse": round(mse, 4),
-        "rmse": round(rmse, 4),
-        "status": "Model successfully retrained",
-    }
-    with open(status_json_path, "w") as status_file:
+    # Update status to "In Progress"
+    with open(status_json_path, "r+") as status_file:
+        status = json.load(status_file)
+        status["status"] = "Model training in progress"
+        status_file.seek(0)
         json.dump(status, status_file, indent=4)
+        status_file.truncate()
 
-    print(f"Model retrained and saved to {model_path}")
-    print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}")
-    return model_path
+    try:
+        # Fetch updated data
+        consumption_data = await ElectricityConsumption.all().values(
+            "user_id", "year", "month", "electricity_consumption"
+        )
+        questionnaire_data = await QuestionnaireAnswers.all().values(
+            "user_id", "nineteen", "one", "two", "three", "seven", "eighteen"
+        )
+        user_data = await User.all().values("id", "pin_code")
+
+        # Merge and process data
+        merged_data = pd.merge(
+            pd.DataFrame(consumption_data),
+            pd.DataFrame(questionnaire_data),
+            on="user_id",
+            how="left",
+        )
+        merged_data = pd.merge(
+            merged_data,
+            pd.DataFrame(user_data),
+            left_on="user_id",
+            right_on="id",
+            how="left",
+        )
+        processed_data = feature_engineering(merged_data)
+
+        # Define features and target
+        X = processed_data[
+            [
+                "month",
+                "nineteen",
+                "zip_avg",
+                "zip_trend",
+                "nineteen_avg",
+                "nineteen_trend",
+                "prev_consumption",
+                "one",
+                "two",
+                "three",
+                "seven",
+                "eighteen",
+            ]
+        ]
+        y = processed_data["electricity_consumption"]
+
+        # One-hot encode categorical features
+        X = pd.get_dummies(X, columns=["nineteen"], drop_first=True)
+
+        # Train the model
+        model = GradientBoostingRegressor(
+            n_estimators=500, learning_rate=0.1, max_depth=5, random_state=42
+        )
+        model.fit(X, y)
+
+        # Calculate MSE and RMSE
+        y_pred = model.predict(X)
+        mse = mean_squared_error(y, y_pred)
+        rmse = mse**0.5
+
+        # Save the model
+        joblib.dump(model, model_path)
+
+        # End tracking the time for retraining
+        end_time = time()
+        duration = round(end_time - start_time, 2)  # Duration in seconds
+
+        # Update the status JSON to "Trained"
+        now = datetime.now()
+        last_updated = now.strftime("%Y-%m-%d %H:%M:%S")
+        days_since_last_update = None  # First model training
+
+        if path.exists(status_json_path):
+            with open(status_json_path, "r") as status_file:
+                previous_status = json.load(status_file)
+                if previous_status.get("last_updated"):
+                    last_update_date = datetime.strptime(
+                        previous_status["last_updated"], "%Y-%m-%d %H:%M:%S"
+                    )
+                    days_since_last_update = (now - last_update_date).days
+
+        # Save final updated status
+        status = {
+            "last_updated": last_updated,
+            "update_duration": f"{duration} seconds",
+            "days_since_last_update": days_since_last_update,
+            "mse": round(mse, 4),
+            "rmse": round(rmse, 4),
+            "status": "Model training completed",
+        }
+        with open(status_json_path, "w") as status_file:
+            json.dump(status, status_file, indent=4)
+
+        print(f"Model retrained and saved to {model_path}")
+        print(f"MSE: {mse:.4f}, RMSE: {rmse:.4f}")
+        return model_path
+
+    except Exception as e:
+        # Update status to "Failed" in case of an error
+        with open(status_json_path, "r+") as status_file:
+            status = json.load(status_file)
+            status["status"] = f"Model training failed: {str(e)}"
+            status_file.seek(0)
+            json.dump(status, status_file, indent=4)
+            status_file.truncate()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Model training failed: {str(e)}",
+        )
 
 
 # ---------------------------------------------
