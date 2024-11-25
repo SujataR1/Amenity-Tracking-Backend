@@ -1,7 +1,7 @@
 from tortoise import fields
 from tortoise.models import Model
 from Users.Data_Schemas import RoleEnum, OTPTypeEnum
-from Questionnaire.Data_Schemas import MonthEnum
+from Questionnaire.Data_Schemas import MonthEnum, ClimateEnum
 
 
 class User(Model):
@@ -85,6 +85,9 @@ class QuestionnaireAnswers(Model):
         MonthEnum
     )  # "During which month do you generally go for vacations?"
     eighteen = fields.IntField()  # "How long is your vacation per trip?"
+    climate = fields.CharEnumField(
+        ClimateEnum
+    )  # "What's is the climate there?"
 
     class Meta:
         table = "questionnaire_answers"
