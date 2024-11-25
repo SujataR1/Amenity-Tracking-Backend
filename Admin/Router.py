@@ -41,6 +41,7 @@ from Admin.Methods import (
     get_training_status_from_file,
 )
 from Machine_Learning.Methods import retrain_model
+from Database_and_ORM.Database_Models import Admin
 
 Admin_Router = APIRouter()
 
@@ -256,8 +257,15 @@ async def retrain_model_api(payload: dict = Depends(verify_jwt)):
     """
     API to retrain the electricity consumption prediction model.
     """
+    admin_id = payload.get("user_id")
+    admin = await Admin.get_or_none(id=admin_id)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins are authorized to view model training status.",
+        )
     try:
-        result = await retrain_model(payload)
+        result = await retrain_model()
         return result
     except Exception as e:
         raise HTTPException(
