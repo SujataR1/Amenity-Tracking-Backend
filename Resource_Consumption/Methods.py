@@ -33,37 +33,37 @@ async def create_electricity_consumption(
         return {"error": "Record for this month and year already exists."}
 
 
-async def update_electricity_consumption(
-    user_id: str, data: UpdateConsumption
-) -> dict:
-    try:
-        record = await ElectricityConsumption.get(
-            user_id=user_id, month=data.month, year=data.year
-        )
-        record.electricity_consumption = data.consumption
-        record.updated_at = datetime.now(timezone.utc)
-        await record.save()
-        return {
-            "message": "Electricity consumption updated successfully",
-            "record": record,
-        }
-    except DoesNotExist:
-        return {"error": "Record not found for the specified criteria."}
+# async def update_electricity_consumption(
+#     user_id: str, data: UpdateConsumption
+# ) -> dict:
+#     try:
+#         record = await ElectricityConsumption.get(
+#             user_id=user_id, month=data.month, year=data.year
+#         )
+#         record.electricity_consumption = data.consumption
+#         record.updated_at = datetime.now(timezone.utc)
+#         await record.save()
+#         return {
+#             "message": "Electricity consumption updated successfully",
+#             "record": record,
+#         }
+#     except DoesNotExist:
+#         return {"error": "Record not found for the specified criteria."}
 
 
-async def delete_electricity_consumption(
-    user_id: str, data: GetConsumption
-) -> dict:
-    try:
-        record = await ElectricityConsumption.get(
-            user_id=user_id, month=data.month, year=data.year
-        )
-        await record.delete()
-        return {
-            "message": "Electricity consumption record deleted successfully"
-        }
-    except DoesNotExist:
-        return {"error": "Record not found for the specified criteria."}
+# async def delete_electricity_consumption(
+#     user_id: str, data: GetConsumption
+# ) -> dict:
+#     try:
+#         record = await ElectricityConsumption.get(
+#             user_id=user_id, month=data.month, year=data.year
+#         )
+#         await record.delete()
+#         return {
+#             "message": "Electricity consumption record deleted successfully"
+#         }
+#     except DoesNotExist:
+#         return {"error": "Record not found for the specified criteria."}
 
 
 async def get_electricity_consumption(
