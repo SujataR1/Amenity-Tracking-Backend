@@ -21,7 +21,6 @@ async def predict_consumption_api(
     """
     try:
         result = await predict_consumption(
-            user_id=request.user_id,
             month=request.month,
             year=request.year,
             payload=payload,
