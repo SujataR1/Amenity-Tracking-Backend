@@ -1,9 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error
 import joblib
 from tortoise.transactions import in_transaction
 from tortoise.functions import Avg
@@ -45,7 +44,7 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
         )
         user_data = await User.get(id=user_id)
         user_nineteen = user_questionaire_data.nineteen
-        user_zip = await user_data.user.pin_code
+        user_zip = await user_data.pin_code
 
         # Update averages for 'nineteen'
         nineteen_avg = (
@@ -73,25 +72,30 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 
 async def retrain_model():
     """
-    Retrains the electricity consumption prediction model and updates status in Electricity_Model_Update_Status.json.
-    Implements regularization and reduced model complexity to address overfitting.
+    Retrains the electricity consumption prediction model using HistGradientBoostingRegressor
+    and updates status in Electricity_Model_Update_Status.json. Implements regularization
+    and reduced model complexity to address overfitting. Includes MAE for precision evaluation.
     """
+
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = path.join(model_dir, "Electricity_Consumption_Model.pkl")
     status_json_path = path.join(
-        model_dir, "Electricity_Model_Update_Status.json"
+        model_dir, "Electricity_Consumption_Model_Update_Status.json"
+    )
+    features_path = path.join(
+        model_dir, "Electricity_Consumption_Model_Features.json"
     )
 
     if not path.exists(model_dir):
         makedirs(model_dir, exist_ok=True)
 
     start_time = time()
-    max_duration = 6 * 3600  # 6 hours in seconds
-    rmse = float("inf")
+    max_duration = 6 * 3600  # 10 minutes for testing (adjust as needed)
+    mae = float("inf")
     iteration = 0
 
     try:
-        while rmse > 5 and (time() - start_time) < max_duration:
+        while mae > 5 and (time() - start_time) < max_duration:
             iteration += 1
             print(f"Retraining iteration {iteration}...")
 
@@ -164,6 +168,10 @@ async def retrain_model():
                     "three",
                     "seven",
                     "eighteen",
+                    "month_zip_interaction",  # New interaction
+                    "month_nineteen_interaction",  # New interaction
+                    "zip_trend_nineteen_trend_interaction",  # New interaction
+                    "prev_consumption_month_interaction",  # New interaction
                 ]
             ]
             y = processed_data["electricity_consumption"]
@@ -173,42 +181,45 @@ async def retrain_model():
                 X, y, test_size=0.2, random_state=42
             )
 
-            scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-            X_val_scaled = scaler.transform(X_val)
+            # Save feature names for future use
+            feature_names = list(X_train.columns)
+            with open(features_path, "w") as features_file:
+                json.dump(feature_names, features_file)
 
+            # HistGradientBoostingRegressor supports missing values natively
             gbm_config = await load_gbm_config()
 
-            model = GradientBoostingRegressor(
-                n_estimators=gbm_config["n_estimators"],
+            model = HistGradientBoostingRegressor(
+                max_iter=gbm_config[
+                    "n_estimators"
+                ],  # Iterations analogous to n_estimators
                 learning_rate=gbm_config["learning_rate"],
                 max_depth=gbm_config["max_depth"],
-                random_state=gbm_config["random_state"],
-                subsample=gbm_config["subsample"],
-                min_samples_split=gbm_config["min_samples_split"],
-                min_samples_leaf=gbm_config["min_samples_leaf"],
+                l2_regularization=gbm_config.get("l2_regularization", 0.0),
+                max_leaf_nodes=gbm_config.get("max_leaf_nodes", 31),
+                early_stopping=gbm_config.get("early_stopping", True),
                 validation_fraction=gbm_config["validation_fraction"],
-                n_iter_no_change=gbm_config["n_iter_no_change"],
                 tol=gbm_config["tol"],
+                random_state=gbm_config["random_state"],
             )
-            model.fit(X_train_scaled, y_train)
+            model.fit(X_train, y_train)
 
-            y_train_pred = model.predict(X_train_scaled)
-            y_val_pred = model.predict(X_val_scaled)
+            y_train_pred = model.predict(X_train)
+            y_val_pred = model.predict(X_val)
 
-            train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
-            val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
+            train_mae = mean_absolute_error(y_train, y_train_pred)
+            val_mae = mean_absolute_error(y_val, y_val_pred)
 
             print(
-                f"Iteration {iteration}: Train RMSE={train_rmse:.4f}, Val RMSE={val_rmse:.4f}"
+                f"Iteration {iteration}: Train MAE={train_mae:.4f}, Val MAE={val_mae:.4f}"
             )
 
-            rmse = val_rmse
+            mae = val_mae
 
             joblib.dump(model, model_path)
 
-            if rmse <= 5:
-                print("Model achieved target RMSE. Training complete.")
+            if mae <= 5:
+                print("Model achieved target MAE. Training complete.")
                 break
 
         duration = round(time() - start_time, 2)
@@ -218,11 +229,11 @@ async def retrain_model():
         status = {
             "last_updated": last_updated,
             "update_duration": f"{duration} seconds",
-            "train_rmse": round(train_rmse, 4),
-            "val_rmse": round(val_rmse, 4),
+            "train_mae": round(train_mae, 4),
+            "val_mae": round(val_mae, 4),
             "status": (
                 "Training completed"
-                if rmse <= 5
+                if mae <= 5
                 else "Stopped: Time limit reached"
             ),
             "iterations": iteration,
@@ -272,6 +283,16 @@ def feature_engineering(data):
         "electricity_consumption"
     ].shift(1)
 
+    # Add interaction features
+    data["month_zip_interaction"] = data["month"] * data["zip_avg"]
+    data["month_nineteen_interaction"] = data["month"] * data["nineteen_avg"]
+    data["zip_trend_nineteen_trend_interaction"] = (
+        data["zip_trend"] * data["nineteen_trend"]
+    )
+    data["prev_consumption_month_interaction"] = (
+        data["prev_consumption"] * data["month"]
+    )
+
     # Drop rows with insufficient data for training
     data = data.dropna(subset=["prev_consumption"])
 
@@ -311,6 +332,19 @@ def predict_consumption(user_id, year, month, data, model):
         }
 
     # Prepare input features
+    user_data["month_zip_interaction"] = (
+        user_data["month"] * user_data["zip_avg"]
+    )
+    user_data["month_nineteen_interaction"] = (
+        user_data["month"] * user_data["nineteen_avg"]
+    )
+    user_data["zip_trend_nineteen_trend_interaction"] = (
+        user_data["zip_trend"] * user_data["nineteen_trend"]
+    )
+    user_data["prev_consumption_month_interaction"] = (
+        user_data["prev_consumption"] * user_data["month"]
+    )
+
     X_input = user_data[
         [
             "month",
@@ -325,6 +359,10 @@ def predict_consumption(user_id, year, month, data, model):
             "three",
             "seven",
             "eighteen",
+            "month_zip_interaction",
+            "month_nineteen_interaction",
+            "zip_trend_nineteen_trend_interaction",
+            "prev_consumption_month_interaction",
         ]
     ]
     X_input = pd.get_dummies(X_input, columns=["nineteen"], drop_first=True)
