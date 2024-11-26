@@ -90,7 +90,7 @@ async def retrain_model():
         makedirs(model_dir, exist_ok=True)
 
     start_time = time()
-    max_duration = 6 * 3600  # 10 minutes for testing (adjust as needed)
+    max_duration = 7 * 3600  # 10 minutes for testing (adjust as needed)
     mae = float("inf")
     iteration = 0
 
