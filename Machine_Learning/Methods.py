@@ -3,6 +3,9 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
+from skopt import BayesSearchCV
+from skopt.space import Real, Integer
+from sklearn.metrics import make_scorer
 import joblib
 from tortoise.transactions import in_transaction
 from tortoise.functions import Avg
@@ -17,8 +20,7 @@ import json
 from decouple import config
 from os import path, makedirs
 from time import time
-import json
-from fastapi import HTTPException, status
+from sklearn.preprocessing import RobustScaler
 
 # ---------------------------------------------
 # Method 1: Update Averages Dynamically
@@ -36,7 +38,6 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
     """
     Updates rolling averages and trends for the given user's new electricity consumption entry.
     """
-
     async with in_transaction():
         # Fetch the user's 'nineteen' value and ZIP code
         user_questionaire_data = await QuestionnaireAnswers.get(
@@ -44,7 +45,7 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
         )
         user_data = await User.get(id=user_id)
         user_nineteen = user_questionaire_data.nineteen
-        user_zip = await user_data.pin_code
+        user_zip = user_data.pin_code
 
         # Update averages for 'nineteen'
         nineteen_avg = (
@@ -70,13 +71,47 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 # ---------------------------------------------
 
 
+def train_val_mae_difference_score(estimator, X, y):
+    """
+    Custom scoring function to minimize the difference between Train MAE and Val MAE,
+    while printing Train MAE, Validation MAE, and Percentage Accuracy after each fold.
+    """
+    # Split the data into training and validation
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    # Fit the estimator
+    estimator.fit(X_train, y_train)
+
+    # Predictions
+    y_train_pred = estimator.predict(X_train)
+    y_val_pred = estimator.predict(X_val)
+
+    # Calculate Train MAE and Validation MAE
+    train_mae = mean_absolute_error(np.expm1(y_train), np.expm1(y_train_pred))
+    val_mae = mean_absolute_error(np.expm1(y_val), np.expm1(y_val_pred))
+
+    # Calculate Percentage Accuracy
+    mean_actual = np.mean(np.expm1(y_val))  # Mean of actual validation values
+    percentage_accuracy = 100 - (val_mae / mean_actual * 100)
+
+    # Print the results after each fold
+    print(
+        f"[CV] Train MAE={train_mae:.4f}, Validation MAE={val_mae:.4f}, "
+        f"Difference={abs(train_mae - val_mae):.4f}, "
+        f"Percentage Accuracy={percentage_accuracy:.2f}%"
+    )
+
+    # Return the absolute difference between Train MAE and Validation MAE as the scoring metric
+    return abs(train_mae - val_mae)
+
+
 async def retrain_model():
     """
     Retrains the electricity consumption prediction model using HistGradientBoostingRegressor
-    and updates status in Electricity_Model_Update_Status.json. Implements regularization
-    and reduced model complexity to address overfitting. Includes MAE for precision evaluation.
+    with Bayesian optimization for parameter tuning.
     """
-
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = path.join(model_dir, "Electricity_Consumption_Model.pkl")
     status_json_path = path.join(
@@ -85,17 +120,18 @@ async def retrain_model():
     features_path = path.join(
         model_dir, "Electricity_Consumption_Model_Features.json"
     )
+    gbm_config_path = "Machine_Learning/Models/gbm_config.json"
 
     if not path.exists(model_dir):
         makedirs(model_dir, exist_ok=True)
 
     start_time = time()
-    max_duration = 7 * 3600  # 10 minutes for testing (adjust as needed)
+    max_duration = 7 * 3600  # 7 hours for training
     mae = float("inf")
     iteration = 0
 
     try:
-        while mae > 5 and (time() - start_time) < max_duration:
+        while mae > 3 and (time() - start_time) < max_duration:
             iteration += 1
             print(f"Retraining iteration {iteration}...")
 
@@ -151,13 +187,18 @@ async def retrain_model():
             else:
                 raise ValueError("No data available for training.")
 
+            print(f"Final data shape: {final_data.shape}")
             processed_data = feature_engineering(final_data)
+
+            if processed_data.empty:
+                raise ValueError(
+                    "Processed data is empty after feature engineering."
+                )
 
             # Define features and target
             X = processed_data[
                 [
                     "month",
-                    "nineteen",
                     "zip_avg",
                     "zip_trend",
                     "nineteen_avg",
@@ -168,57 +209,104 @@ async def retrain_model():
                     "three",
                     "seven",
                     "eighteen",
-                    "month_zip_interaction",  # New interaction
-                    "month_nineteen_interaction",  # New interaction
-                    "zip_trend_nineteen_trend_interaction",  # New interaction
-                    "prev_consumption_month_interaction",  # New interaction
+                    "month_zip_interaction",
+                    "month_nineteen_interaction",
+                    "zip_trend_nineteen_trend_interaction",
+                    "prev_consumption_month_interaction",
+                    "month_sin",
+                    "month_cos",
                 ]
             ]
             y = processed_data["electricity_consumption"]
 
-            X = pd.get_dummies(X, columns=["nineteen"], drop_first=True)
-            X_train, X_val, y_train, y_val = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
+            print(f"Target variable (y) shape: {y.shape}")
 
-            # Save feature names for future use
-            feature_names = list(X_train.columns)
-            with open(features_path, "w") as features_file:
-                json.dump(feature_names, features_file)
+            y = np.log1p(y)
+            scaler = RobustScaler()
+            X_scaled = scaler.fit_transform(X)
 
-            # HistGradientBoostingRegressor supports missing values natively
+            param_space = {
+                "max_iter": Integer(500, 5000),
+                "learning_rate": Real(0.001, 0.5, prior="log-uniform"),
+                "max_depth": Integer(5, 12),
+                "min_samples_leaf": Integer(6, 25),
+                "l2_regularization": Real(0.01, 0.3, prior="log-uniform"),
+                "max_bins": Integer(2, 255),
+            }
+
             gbm_config = await load_gbm_config()
 
-            model = HistGradientBoostingRegressor(
-                max_iter=gbm_config[
-                    "n_estimators"
-                ],  # Iterations analogous to n_estimators
-                learning_rate=gbm_config["learning_rate"],
-                max_depth=gbm_config["max_depth"],
-                l2_regularization=gbm_config.get("l2_regularization", 0.0),
-                max_leaf_nodes=gbm_config.get("max_leaf_nodes", 31),
-                early_stopping=gbm_config.get("early_stopping", True),
-                validation_fraction=gbm_config["validation_fraction"],
+            base_model = HistGradientBoostingRegressor(
+                loss="absolute_error",
                 tol=gbm_config["tol"],
                 random_state=gbm_config["random_state"],
             )
-            model.fit(X_train, y_train)
 
-            y_train_pred = model.predict(X_train)
-            y_val_pred = model.predict(X_val)
+            def scoring_function(estimator, X_subset, y_subset=y):
+                return train_val_mae_difference_score(
+                    estimator, X_subset, y_subset
+                )
 
-            train_mae = mean_absolute_error(y_train, y_train_pred)
-            val_mae = mean_absolute_error(y_val, y_val_pred)
-
-            print(
-                f"Iteration {iteration}: Train MAE={train_mae:.4f}, Val MAE={val_mae:.4f}"
+            bayes_search = BayesSearchCV(
+                base_model,
+                search_spaces=param_space,
+                scoring=scoring_function,
+                n_iter=100,
+                cv=5,
+                verbose=2,
+                random_state=42,
             )
 
-            mae = val_mae
+            print(f"X_scaled shape: {X_scaled.shape}, y shape: {y.shape}")
+            bayes_search.fit(X_scaled, y)
+
+            model = bayes_search.best_estimator_
+            print(f"Best parameters: {bayes_search.best_params_}")
+
+            # Update gbm_config.json with the best parameters
+            gbm_config.update(bayes_search.best_params_)
+            with open(gbm_config_path, "w") as config_file:
+                json.dump(gbm_config, config_file, indent=4)
+            print(f"Updated {gbm_config_path} with best parameters.")
+
+            # Evaluate after Bayesian optimization
+            y_train_pred = model.predict(X_scaled)
+            train_mae = mean_absolute_error(
+                np.expm1(y), np.expm1(y_train_pred)
+            )
+            mean_actual = np.mean(np.expm1(y))
+            percentage_accuracy = 100 - (train_mae / mean_actual * 100)
+
+            # Split for validation evaluation
+            X_train, X_val, y_train_split, y_val_split = train_test_split(
+                X_scaled, y, test_size=0.2, random_state=42
+            )
+            y_val_pred = model.predict(X_val)
+            val_mae = mean_absolute_error(
+                np.expm1(y_val_split), np.expm1(y_val_pred)
+            )
+            train_val_difference = abs(train_mae - val_mae)
+
+            # Log after Bayesian tuning
+            print(
+                f"Bayesian Parameter Tuning - Train MAE={train_mae:.4f}, "
+                f"Validation MAE={val_mae:.4f}, "
+                f"Difference={train_val_difference:.4f}, "
+                f"Percentage Accuracy={percentage_accuracy:.2f}%"
+            )
+
+            # Final evaluation for the iteration
+            print(
+                f"Iteration {iteration}: "
+                f"Train MAE={train_mae:.4f}, Validation MAE={val_mae:.4f}, "
+                f"Difference={train_val_difference:.4f}, Percentage Accuracy={percentage_accuracy:.2f}%"
+            )
+
+            mae = train_mae
 
             joblib.dump(model, model_path)
 
-            if mae <= 5:
+            if mae <= 3:
                 print("Model achieved target MAE. Training complete.")
                 break
 
@@ -231,9 +319,11 @@ async def retrain_model():
             "update_duration": f"{duration} seconds",
             "train_mae": round(train_mae, 4),
             "val_mae": round(val_mae, 4),
+            "train_val_difference": round(train_val_difference, 4),
+            "percentage_accuracy": round(percentage_accuracy, 2),
             "status": (
                 "Training completed"
-                if mae <= 5
+                if mae <= 3
                 else "Stopped: Time limit reached"
             ),
             "iterations": iteration,
@@ -254,6 +344,12 @@ def feature_engineering(data):
     """
     Applies feature engineering to prepare data for ML model training.
     """
+    # Ensure the target column is not accidentally dropped
+    if "electricity_consumption" not in data.columns:
+        raise ValueError(
+            "Target column 'electricity_consumption' is missing in input data."
+        )
+
     # Convert month names to numerical values
     data["month"] = data["month"].apply(
         lambda x: list(calendar.month_name).index(x)
@@ -293,83 +389,11 @@ def feature_engineering(data):
         data["prev_consumption"] * data["month"]
     )
 
+    # Add cyclical encoding for months
+    data["month_sin"] = np.sin(2 * np.pi * data["month"] / 12)
+    data["month_cos"] = np.cos(2 * np.pi * data["month"] / 12)
+
     # Drop rows with insufficient data for training
     data = data.dropna(subset=["prev_consumption"])
 
     return data
-
-
-# ---------------------------------------------
-# Method 4: Predict Consumption
-# ---------------------------------------------
-
-
-def predict_consumption(user_id, year, month, data, model):
-    """
-    Predicts electricity consumption for a user based on past data and locality trends.
-    """
-    user_data = data[
-        (data["user_id"] == user_id)
-        & (data["year"] == year)
-        & (data["month"] == month)
-    ]
-
-    if user_data.empty:
-        # Fallback to 'nineteen' and ZIP-level averages
-        user_nineteen = data[data["user_id"] == user_id]["nineteen"].values[0]
-        user_zip = data[data["user_id"] == user_id]["pin_code"].values[0]
-
-        nineteen_avg = data[data["nineteen"] == user_nineteen][
-            "nineteen_avg"
-        ].mean()
-        zip_avg = data[data["pin_code"] == user_zip]["zip_avg"].mean()
-
-        return {
-            "user_predicted_consumption": (
-                zip_avg if not pd.isna(zip_avg) else nineteen_avg
-            ),
-            "locality_avg": nineteen_avg,
-        }
-
-    # Prepare input features
-    user_data["month_zip_interaction"] = (
-        user_data["month"] * user_data["zip_avg"]
-    )
-    user_data["month_nineteen_interaction"] = (
-        user_data["month"] * user_data["nineteen_avg"]
-    )
-    user_data["zip_trend_nineteen_trend_interaction"] = (
-        user_data["zip_trend"] * user_data["nineteen_trend"]
-    )
-    user_data["prev_consumption_month_interaction"] = (
-        user_data["prev_consumption"] * user_data["month"]
-    )
-
-    X_input = user_data[
-        [
-            "month",
-            "nineteen",
-            "zip_avg",
-            "zip_trend",
-            "nineteen_avg",
-            "nineteen_trend",
-            "prev_consumption",
-            "one",
-            "two",
-            "three",
-            "seven",
-            "eighteen",
-            "month_zip_interaction",
-            "month_nineteen_interaction",
-            "zip_trend_nineteen_trend_interaction",
-            "prev_consumption_month_interaction",
-        ]
-    ]
-    X_input = pd.get_dummies(X_input, columns=["nineteen"], drop_first=True)
-
-    # Predict
-    prediction = model.predict(X_input)[0]
-    return {
-        "user_predicted_consumption": prediction,
-        "locality_avg": user_data["nineteen_avg"].mean(),
-    }
