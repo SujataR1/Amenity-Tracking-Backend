@@ -21,6 +21,8 @@ from decouple import config
 from os import path, makedirs
 from time import time
 from sklearn.preprocessing import RobustScaler
+import signal
+import sys
 
 # ---------------------------------------------
 # Method 1: Update Averages Dynamically
@@ -67,7 +69,7 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 
 
 # ---------------------------------------------
-# Method 2: Retrain Model Periodically
+# Method 2: Model Training
 # ---------------------------------------------
 
 
@@ -97,9 +99,9 @@ def train_val_mae_difference_score(estimator, X, y):
 
     # Composite scoring logic
     mae_difference = abs(train_mae - val_mae)
-    composite_score = (mae_difference * 0.4) - (
+    composite_score = (mae_difference * 0.25) - (
         percentage_accuracy / 100
-    ) * 0.6  # Weighting both metrics
+    ) * 0.75  # Weighting both metrics
 
     # Print metrics for logging
     print(
@@ -113,10 +115,107 @@ def train_val_mae_difference_score(estimator, X, y):
     return composite_score
 
 
+def save_training_state(
+    bayes_search,
+    gbm_config,
+    iteration,
+    train_mae,
+    val_mae,
+    percentage_accuracy,
+    train_val_difference,
+    model_path,
+    gbm_config_path,
+    state_file_path,
+    bayes_search_path,
+):
+    """
+    Save the current state of the training process, including the BayesSearchCV object for detailed results.
+    """
+    # Save the model
+    joblib.dump(bayes_search.best_estimator_, model_path)
+
+    # Save the BayesSearchCV object
+    joblib.dump(bayes_search, bayes_search_path)
+
+    # Update and save gbm_config with the best parameters
+    gbm_config.update(bayes_search.best_params_)
+    with open(gbm_config_path, "w") as config_file:
+        json.dump(gbm_config, config_file, indent=4)
+
+    # Save training state metadata
+    state = {
+        "iteration": iteration,
+        "train_mae": train_mae,
+        "val_mae": val_mae,
+        "percentage_accuracy": percentage_accuracy,
+        "train_val_difference": train_val_difference,
+        "best_params": bayes_search.best_params_,
+        "search_results": bayes_search.cv_results_,  # Save cross-validation results
+    }
+    with open(state_file_path, "w") as state_file:
+        json.dump(state, state_file, indent=4)
+
+    print(f"State saved successfully: Iteration {iteration}")
+
+
+def load_training_state(
+    model_path, gbm_config_path, state_file_path, bayes_search_path
+):
+    """
+    Load the previous state of the training process if it exists.
+    """
+    # Load the model
+    if path.exists(model_path):
+        model = joblib.load(model_path)
+    else:
+        model = None
+
+    # Load gbm_config
+    if path.exists(gbm_config_path):
+        with open(gbm_config_path, "r") as config_file:
+            gbm_config = json.load(config_file)
+    else:
+        gbm_config = {}
+
+    # Load state metadata
+    if path.exists(state_file_path):
+        with open(state_file_path, "r") as state_file:
+            state = json.load(state_file)
+        iteration = state.get("iteration", 0)
+        train_mae = state.get("train_mae", float("inf"))
+        val_mae = state.get("val_mae", float("inf"))
+        percentage_accuracy = state.get("percentage_accuracy", 0)
+        train_val_difference = state.get("train_val_difference", float("inf"))
+    else:
+        iteration = 0
+        train_mae = float("inf")
+        val_mae = float("inf")
+        percentage_accuracy = 0
+        train_val_difference = float("inf")
+
+    # Load BayesSearchCV object
+    if path.exists(bayes_search_path):
+        bayes_search = joblib.load(bayes_search_path)
+    else:
+        bayes_search = None
+
+    return (
+        model,
+        gbm_config,
+        iteration,
+        train_mae,
+        val_mae,
+        percentage_accuracy,
+        train_val_difference,
+        bayes_search,
+    )
+
+
 async def retrain_model():
     """
     Retrains the electricity consumption prediction model using HistGradientBoostingRegressor
     with Bayesian optimization for parameter tuning.
+    Includes handling for saving state on Ctrl+C or interruption.
     """
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = path.join(model_dir, "Electricity_Consumption_Model.pkl")
@@ -127,6 +226,8 @@ async def retrain_model():
         model_dir, "Electricity_Consumption_Model_Features.json"
     )
     gbm_config_path = "Machine_Learning/Models/gbm_config.json"
+    state_file_path = path.join(model_dir, "Training_State.json")
+    bayes_search_path = path.join(model_dir, "BayesSearchCV.pkl")
 
     if not path.exists(model_dir):
         makedirs(model_dir, exist_ok=True)
@@ -134,10 +235,56 @@ async def retrain_model():
     start_time = time()
     max_duration = 7 * 3600  # 7 hours for training
     mae = float("inf")
-    iteration = 0
+
+    # Load previous training state if available
+    (
+        model,
+        gbm_config,
+        iteration,
+        train_mae,
+        val_mae,
+        percentage_accuracy,
+        train_val_difference,
+        bayes_search,
+    ) = load_training_state(
+        model_path, gbm_config_path, state_file_path, bayes_search_path
+    )
+
+    # Flag to detect if interrupted
+    interrupted = False
+
+    def handle_interrupt(signum, frame):
+        """
+        Handles SIGINT (Ctrl+C) interruptions by setting a flag and ensuring exit.
+        """
+        nonlocal interrupted
+        interrupted = True
+        print("\nInterrupt received! Saving current training state...")
+        # Save state and exit immediately
+        save_training_state(
+            bayes_search,
+            gbm_config,
+            iteration,
+            train_mae,
+            val_mae,
+            percentage_accuracy,
+            train_val_difference,
+            model_path,
+            gbm_config_path,
+            state_file_path,
+            bayes_search_path,
+        )
+        print("Training state saved. Exiting program.")
+        sys.exit(0)  # Exit after saving the state
+
+    # Register signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, handle_interrupt)
 
     try:
         while mae > 3 and (time() - start_time) < max_duration:
+            if interrupted:
+                break  # Exit loop gracefully if interrupted
+
             iteration += 1
             print(f"Retraining iteration {iteration}...")
 
@@ -240,28 +387,28 @@ async def retrain_model():
                 "max_bins": Integer(2, 255),
             }
 
-            gbm_config = await load_gbm_config()
-
-            base_model = HistGradientBoostingRegressor(
-                loss="absolute_error",
-                tol=gbm_config["tol"],
-                random_state=gbm_config["random_state"],
-            )
-
-            def scoring_function(estimator, X_subset, y_subset=y):
-                return train_val_mae_difference_score(
-                    estimator, X_subset, y_subset
+            if bayes_search is None:
+                gbm_config = await load_gbm_config()
+                base_model = HistGradientBoostingRegressor(
+                    loss="absolute_error",
+                    tol=gbm_config["tol"],
+                    random_state=gbm_config["random_state"],
                 )
 
-            bayes_search = BayesSearchCV(
-                base_model,
-                search_spaces=param_space,
-                scoring=scoring_function,
-                n_iter=100,
-                cv=5,
-                verbose=2,
-                random_state=42,
-            )
+                def scoring_function(estimator, X_subset, y_subset=y):
+                    return train_val_mae_difference_score(
+                        estimator, X_subset, y_subset
+                    )
+
+                bayes_search = BayesSearchCV(
+                    base_model,
+                    search_spaces=param_space,
+                    scoring=scoring_function,
+                    n_iter=100,
+                    cv=5,
+                    verbose=2,
+                    random_state=42,
+                )
 
             print(f"X_scaled shape: {X_scaled.shape}, y shape: {y.shape}")
             bayes_search.fit(X_scaled, y)
@@ -301,44 +448,34 @@ async def retrain_model():
                 f"Percentage Accuracy={percentage_accuracy:.2f}%"
             )
 
-            # Final evaluation for the iteration
-            print(
-                f"Iteration {iteration}: "
-                f"Train MAE={train_mae:.4f}, Validation MAE={val_mae:.4f}, "
-                f"Difference={train_val_difference:.4f}, Percentage Accuracy={percentage_accuracy:.2f}%"
+            # Save training state
+            save_training_state(
+                bayes_search,
+                gbm_config,
+                iteration,
+                train_mae,
+                val_mae,
+                percentage_accuracy,
+                train_val_difference,
+                model_path,
+                gbm_config_path,
+                state_file_path,
+                bayes_search_path,
             )
 
             mae = train_mae
-
-            joblib.dump(model, model_path)
 
             if mae <= 3:
                 print("Model achieved target MAE. Training complete.")
                 break
 
-        duration = round(time() - start_time, 2)
-        now = datetime.now()
-        last_updated = now.strftime("%Y-%m-%d %H:%M:%S")
-
-        status = {
-            "last_updated": last_updated,
-            "update_duration": f"{duration} seconds",
-            "train_mae": round(train_mae, 4),
-            "val_mae": round(val_mae, 4),
-            "train_val_difference": round(train_val_difference, 4),
-            "percentage_accuracy": round(percentage_accuracy, 2),
-            "status": (
-                "Training completed"
-                if mae <= 3
-                else "Stopped: Time limit reached"
-            ),
-            "iterations": iteration,
-        }
-        with open(status_json_path, "w") as status_file:
-            json.dump(status, status_file, indent=4)
-
     except Exception as e:
         print(f"Error during training: {str(e)}")
+    finally:
+        if interrupted:
+            sys.exit(
+                0
+            )  # Exit the program if interrupted  # Exit the program if interrupted
 
 
 # ---------------------------------------------
