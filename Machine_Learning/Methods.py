@@ -73,8 +73,7 @@ async def update_averages_on_new_entry(user_id, year, month, new_consumption):
 
 def train_val_mae_difference_score(estimator, X, y):
     """
-    Custom scoring function to minimize the difference between Train MAE and Val MAE,
-    while printing Train MAE, Validation MAE, and Percentage Accuracy after each fold.
+    Custom scoring function to combine Train-Validation MAE difference and Percentage Accuracy.
     """
     # Split the data into training and validation
     X_train, X_val, y_train, y_val = train_test_split(
@@ -96,15 +95,22 @@ def train_val_mae_difference_score(estimator, X, y):
     mean_actual = np.mean(np.expm1(y_val))  # Mean of actual validation values
     percentage_accuracy = 100 - (val_mae / mean_actual * 100)
 
-    # Print the results after each fold
+    # Composite scoring logic
+    mae_difference = abs(train_mae - val_mae)
+    composite_score = mae_difference - (
+        percentage_accuracy / 100
+    )  # Weighting both metrics
+
+    # Print metrics for logging
     print(
         f"[CV] Train MAE={train_mae:.4f}, Validation MAE={val_mae:.4f}, "
-        f"Difference={abs(train_mae - val_mae):.4f}, "
-        f"Percentage Accuracy={percentage_accuracy:.2f}%"
+        f"Difference={mae_difference:.4f}, "
+        f"Percentage Accuracy={percentage_accuracy:.2f}%, "
+        f"Composite Score={composite_score:.4f}"
     )
 
-    # Return the absolute difference between Train MAE and Validation MAE as the scoring metric
-    return abs(train_mae - val_mae)
+    # Return the composite score (lower is better for minimization)
+    return composite_score
 
 
 async def retrain_model():
