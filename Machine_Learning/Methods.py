@@ -97,9 +97,9 @@ def train_val_mae_difference_score(estimator, X, y):
 
     # Composite scoring logic
     mae_difference = abs(train_mae - val_mae)
-    composite_score = mae_difference - (
+    composite_score = (mae_difference * 0.4) - (
         percentage_accuracy / 100
-    )  # Weighting both metrics
+    ) * 0.6  # Weighting both metrics
 
     # Print metrics for logging
     print(
