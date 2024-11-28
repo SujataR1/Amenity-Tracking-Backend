@@ -13,12 +13,14 @@ from Database_and_ORM.Database_Models import (
 from fastapi import HTTPException, status
 import json
 from decouple import config
+import torch
+from Machine_Learning.Methods import ElectricityConsumptionModel
 
 
 async def predict_consumption(month, year, payload: dict):
     """
     Predicts electricity consumption for a user based on their history, locality trends,
-    and questionnaire answers.
+    and questionnaire answers using a PyTorch model.
     """
     user_id = payload.get("user_id")
     user = await User.get_or_none(id=user_id)
@@ -30,7 +32,7 @@ async def predict_consumption(month, year, payload: dict):
 
     # Paths to model and metadata
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
-    model_path = os.path.join(model_dir, "Electricity_Consumption_Model.pkl")
+    model_path = os.path.join(model_dir, "Electricity_Consumption_Model.pt")
     features_path = os.path.join(
         model_dir, "Electricity_Consumption_Model_Features.json"
     )
@@ -45,14 +47,18 @@ async def predict_consumption(month, year, payload: dict):
             "Feature names file not found. Retrain the model and save feature names."
         )
 
-    # Load the trained model
-    model = joblib.load(model_path)
+    # Define the model architecture
+    input_dim = len(json.load(open(features_path)))  # Read feature count
+    hidden_dim1 = 128  # Should match training setup
+    hidden_dim2 = 64
+    model = ElectricityConsumptionModel(input_dim, hidden_dim1, hidden_dim2)
 
-    # Load saved feature names
-    with open(features_path, "r") as f:
-        all_features = json.load(f)
+    # Load the trained model weights
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.to(device)
+    model.eval()
 
-    # Fetch data for the given user
     try:
         # Fetch user's questionnaire answers
         user_questionnaire = await QuestionnaireAnswers.get(user_id=user_id)
@@ -133,10 +139,18 @@ async def predict_consumption(month, year, payload: dict):
         )
 
         # Align input data with saved feature names
+        with open(features_path, "r") as f:
+            all_features = json.load(f)
         input_data = input_data.reindex(columns=all_features, fill_value=0)
 
+        # Convert to PyTorch tensor
+        input_tensor = torch.tensor(input_data.values, dtype=torch.float32).to(
+            device
+        )
+
         # Make the prediction
-        predicted_consumption = model.predict(input_data)[0]
+        with torch.no_grad():
+            predicted_consumption = model(input_tensor).cpu().numpy()[0][0]
 
         # Calculate locality projection
         locality_projection = nineteen_avg or zip_avg or 0  # Fallback logic
