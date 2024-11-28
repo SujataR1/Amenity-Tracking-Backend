@@ -15,7 +15,7 @@ def validate_pan(value: str):
 async def init_db():
     try:
         await Tortoise.init(
-            db_url=f"{config("DATABASE_URL")}",
+            db_url=f"{config('DATABASE_URL')}",
             modules={"models": ["Database_and_ORM.Database_Models"]},
         )
         await Tortoise.generate_schemas(safe=True)

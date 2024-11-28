@@ -1,10 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
-from skopt import BayesSearchCV
-from skopt.space import Real, Integer
 from sklearn.metrics import make_scorer
 import joblib
 from tortoise.transactions import in_transaction
@@ -21,213 +18,42 @@ from decouple import config
 from os import path, makedirs
 from time import time
 from sklearn.preprocessing import RobustScaler
-import signal
-import sys
-
-# ---------------------------------------------
-# Method 1: Update Averages Dynamically
-# ---------------------------------------------
-
-
-async def load_gbm_config(
-    config_path="Machine_Learning/Models/gbm_config.json",
-):
-    with open(config_path, "r") as config_file:
-        return json.load(config_file)
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+import optuna
 
 
-async def update_averages_on_new_entry(user_id, year, month, new_consumption):
-    """
-    Updates rolling averages and trends for the given user's new electricity consumption entry.
-    """
-    async with in_transaction():
-        # Fetch the user's 'nineteen' value and ZIP code
-        user_questionaire_data = await QuestionnaireAnswers.get(
-            user_id=user_id
-        )
-        user_data = await User.get(id=user_id)
-        user_nineteen = user_questionaire_data.nineteen
-        user_zip = user_data.pin_code
-
-        # Update averages for 'nineteen'
-        nineteen_avg = (
-            await ElectricityConsumption.filter(nineteen=user_nineteen)
-            .annotate(avg_consumption=Avg("electricity_consumption"))
-            .values("avg_consumption")
+class ElectricityConsumptionModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim1, hidden_dim2):
+        super(ElectricityConsumptionModel, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim1),
+            nn.ReLU(),
+            nn.Linear(hidden_dim1, hidden_dim2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim2, 1),
         )
 
-        # Update averages for ZIP code
-        zip_avg = (
-            await ElectricityConsumption.filter(pin_code=user_zip)
-            .annotate(avg_consumption=Avg("electricity_consumption"))
-            .values("avg_consumption")
-        )
-
-        print(
-            f"Updated averages for user {user_id}: {nineteen_avg}, {zip_avg}"
-        )
-
-
-# ---------------------------------------------
-# Method 2: Model Training
-# ---------------------------------------------
-
-
-def train_val_mae_difference_score(estimator, X, y):
-    """
-    Custom scoring function to combine Train-Validation MAE difference and Percentage Accuracy.
-    """
-    # Split the data into training and validation
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-
-    # Fit the estimator
-    estimator.fit(X_train, y_train)
-
-    # Predictions
-    y_train_pred = estimator.predict(X_train)
-    y_val_pred = estimator.predict(X_val)
-
-    # Calculate Train MAE and Validation MAE
-    train_mae = mean_absolute_error(np.expm1(y_train), np.expm1(y_train_pred))
-    val_mae = mean_absolute_error(np.expm1(y_val), np.expm1(y_val_pred))
-
-    # Calculate Percentage Accuracy
-    mean_actual = np.mean(np.expm1(y_val))  # Mean of actual validation values
-    percentage_accuracy = 100 - (val_mae / mean_actual * 100)
-
-    # Composite scoring logic
-    mae_difference = abs(train_mae - val_mae)
-    composite_score = (mae_difference * 0.25) - (
-        percentage_accuracy / 100
-    ) * 0.75  # Weighting both metrics
-
-    # Print metrics for logging
-    print(
-        f"[CV] Train MAE={train_mae:.4f}, Validation MAE={val_mae:.4f}, "
-        f"Difference={mae_difference:.4f}, "
-        f"Percentage Accuracy={percentage_accuracy:.2f}%, "
-        f"Composite Score={composite_score:.4f}"
-    )
-
-    # Return the composite score (lower is better for minimization)
-    return composite_score
-
-
-def save_training_state(
-    bayes_search,
-    gbm_config,
-    iteration,
-    train_mae,
-    val_mae,
-    percentage_accuracy,
-    train_val_difference,
-    model_path,
-    gbm_config_path,
-    state_file_path,
-    bayes_search_path,
-):
-    """
-    Save the current state of the training process, including the BayesSearchCV object for detailed results.
-    """
-    # Save the model
-    joblib.dump(bayes_search.best_estimator_, model_path)
-
-    # Save the BayesSearchCV object
-    joblib.dump(bayes_search, bayes_search_path)
-
-    # Update and save gbm_config with the best parameters
-    gbm_config.update(bayes_search.best_params_)
-    with open(gbm_config_path, "w") as config_file:
-        json.dump(gbm_config, config_file, indent=4)
-
-    # Save training state metadata
-    state = {
-        "iteration": iteration,
-        "train_mae": train_mae,
-        "val_mae": val_mae,
-        "percentage_accuracy": percentage_accuracy,
-        "train_val_difference": train_val_difference,
-        "best_params": bayes_search.best_params_,
-        "search_results": bayes_search.cv_results_,  # Save cross-validation results
-    }
-    with open(state_file_path, "w") as state_file:
-        json.dump(state, state_file, indent=4)
-
-    print(f"State saved successfully: Iteration {iteration}")
-
-
-def load_training_state(
-    model_path, gbm_config_path, state_file_path, bayes_search_path
-):
-    """
-    Load the previous state of the training process if it exists.
-    """
-    # Load the model
-    if path.exists(model_path):
-        model = joblib.load(model_path)
-    else:
-        model = None
-
-    # Load gbm_config
-    if path.exists(gbm_config_path):
-        with open(gbm_config_path, "r") as config_file:
-            gbm_config = json.load(config_file)
-    else:
-        gbm_config = {}
-
-    # Load state metadata
-    if path.exists(state_file_path):
-        with open(state_file_path, "r") as state_file:
-            state = json.load(state_file)
-        iteration = state.get("iteration", 0)
-        train_mae = state.get("train_mae", float("inf"))
-        val_mae = state.get("val_mae", float("inf"))
-        percentage_accuracy = state.get("percentage_accuracy", 0)
-        train_val_difference = state.get("train_val_difference", float("inf"))
-    else:
-        iteration = 0
-        train_mae = float("inf")
-        val_mae = float("inf")
-        percentage_accuracy = 0
-        train_val_difference = float("inf")
-
-    # Load BayesSearchCV object
-    if path.exists(bayes_search_path):
-        bayes_search = joblib.load(bayes_search_path)
-    else:
-        bayes_search = None
-
-    return (
-        model,
-        gbm_config,
-        iteration,
-        train_mae,
-        val_mae,
-        percentage_accuracy,
-        train_val_difference,
-        bayes_search,
-    )
+    def forward(self, x):
+        return self.net(x)
 
 
 async def retrain_model():
     """
-    Retrains the electricity consumption prediction model using HistGradientBoostingRegressor
-    with Bayesian optimization for parameter tuning.
-    Includes handling for saving state on Ctrl+C or interruption.
+    Retrains the electricity consumption prediction model using PyTorch
+    and Optuna for hyperparameter tuning. Saves state after each fitting attempt.
     """
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
-    model_path = path.join(model_dir, "Electricity_Consumption_Model.pkl")
+    model_path = path.join(model_dir, "Electricity_Consumption_Model.pt")
     status_json_path = path.join(
         model_dir, "Electricity_Consumption_Model_Update_Status.json"
     )
     features_path = path.join(
         model_dir, "Electricity_Consumption_Model_Features.json"
     )
-    gbm_config_path = "Machine_Learning/Models/gbm_config.json"
-    state_file_path = path.join(model_dir, "Training_State.json")
-    bayes_search_path = path.join(model_dir, "BayesSearchCV.pkl")
+    hyperparam_config_path = path.join(model_dir, "ML_Config.json")
 
     if not path.exists(model_dir):
         makedirs(model_dir, exist_ok=True)
@@ -235,56 +61,10 @@ async def retrain_model():
     start_time = time()
     max_duration = 7 * 3600  # 7 hours for training
     mae = float("inf")
-
-    # Load previous training state if available
-    (
-        model,
-        gbm_config,
-        iteration,
-        train_mae,
-        val_mae,
-        percentage_accuracy,
-        train_val_difference,
-        bayes_search,
-    ) = load_training_state(
-        model_path, gbm_config_path, state_file_path, bayes_search_path
-    )
-
-    # Flag to detect if interrupted
-    interrupted = False
-
-    def handle_interrupt(signum, frame):
-        """
-        Handles SIGINT (Ctrl+C) interruptions by setting a flag and ensuring exit.
-        """
-        nonlocal interrupted
-        interrupted = True
-        print("\nInterrupt received! Saving current training state...")
-        # Save state and exit immediately
-        save_training_state(
-            bayes_search,
-            gbm_config,
-            iteration,
-            train_mae,
-            val_mae,
-            percentage_accuracy,
-            train_val_difference,
-            model_path,
-            gbm_config_path,
-            state_file_path,
-            bayes_search_path,
-        )
-        print("Training state saved. Exiting program.")
-        sys.exit(0)  # Exit after saving the state
-
-    # Register signal handler for Ctrl+C
-    signal.signal(signal.SIGINT, handle_interrupt)
+    iteration = 0
 
     try:
         while mae > 3 and (time() - start_time) < max_duration:
-            if interrupted:
-                break  # Exit loop gracefully if interrupted
-
             iteration += 1
             print(f"Retraining iteration {iteration}...")
 
@@ -349,27 +129,26 @@ async def retrain_model():
                 )
 
             # Define features and target
-            X = processed_data[
-                [
-                    "month",
-                    "zip_avg",
-                    "zip_trend",
-                    "nineteen_avg",
-                    "nineteen_trend",
-                    "prev_consumption",
-                    "one",
-                    "two",
-                    "three",
-                    "seven",
-                    "eighteen",
-                    "month_zip_interaction",
-                    "month_nineteen_interaction",
-                    "zip_trend_nineteen_trend_interaction",
-                    "prev_consumption_month_interaction",
-                    "month_sin",
-                    "month_cos",
-                ]
+            feature_names = [
+                "month",
+                "zip_avg",
+                "zip_trend",
+                "nineteen_avg",
+                "nineteen_trend",
+                "prev_consumption",
+                "one",
+                "two",
+                "three",
+                "seven",
+                "eighteen",
+                "month_zip_interaction",
+                "month_nineteen_interaction",
+                "zip_trend_nineteen_trend_interaction",
+                "prev_consumption_month_interaction",
+                "month_sin",
+                "month_cos",
             ]
+            X = processed_data[feature_names]
             y = processed_data["electricity_consumption"]
 
             print(f"Target variable (y) shape: {y.shape}")
@@ -378,92 +157,238 @@ async def retrain_model():
             scaler = RobustScaler()
             X_scaled = scaler.fit_transform(X)
 
-            param_space = {
-                "max_iter": Integer(500, 5000),
-                "learning_rate": Real(0.001, 0.5, prior="log-uniform"),
-                "max_depth": Integer(5, 12),
-                "min_samples_leaf": Integer(6, 25),
-                "l2_regularization": Real(0.01, 0.3, prior="log-uniform"),
-                "max_bins": Integer(2, 255),
-            }
+            # Convert data to PyTorch tensors
+            X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+            y_tensor = torch.tensor(y.values, dtype=torch.float32).view(-1, 1)
 
-            if bayes_search is None:
-                gbm_config = await load_gbm_config()
-                base_model = HistGradientBoostingRegressor(
-                    loss="absolute_error",
-                    tol=gbm_config["tol"],
-                    random_state=gbm_config["random_state"],
-                )
+            dataset = TensorDataset(X_tensor, y_tensor)
+            train_size = int(0.8 * len(dataset))
+            val_size = len(dataset) - train_size
+            train_dataset, val_dataset = torch.utils.data.random_split(
+                dataset, [train_size, val_size]
+            )
 
-                def scoring_function(estimator, X_subset, y_subset=y):
-                    return train_val_mae_difference_score(
-                        estimator, X_subset, y_subset
+            train_loader = DataLoader(
+                train_dataset, batch_size=32, shuffle=True
+            )
+            val_loader = DataLoader(val_dataset, batch_size=32)
+
+            # Check for existing hyperparameters
+            if path.exists(hyperparam_config_path):
+                print(f"Loading hyperparameters from {hyperparam_config_path}")
+                with open(hyperparam_config_path, "r") as config_file:
+                    best_params = json.load(config_file)
+            else:
+                print("No saved hyperparameters found. Running Optuna...")
+
+                # Define the Optuna objective function
+                def objective(trial):
+                    # Suggest hyperparameters
+                    learning_rate = trial.suggest_float(
+                        "learning_rate", 1e-4, 1e-2, log=True
                     )
+                    hidden_dim1 = trial.suggest_int(
+                        "hidden_dim1", 64, 256, step=32
+                    )
+                    hidden_dim2 = trial.suggest_int(
+                        "hidden_dim2", 32, 128, step=16
+                    )
+                    batch_size = trial.suggest_categorical(
+                        "batch_size", [16, 32, 64]
+                    )
+                    epochs = trial.suggest_int("epochs", 10, 50)
 
-                bayes_search = BayesSearchCV(
-                    base_model,
-                    search_spaces=param_space,
-                    scoring=scoring_function,
-                    n_iter=100,
-                    cv=5,
-                    verbose=2,
-                    random_state=42,
+                    # Adjust DataLoader for batch size
+                    train_loader = DataLoader(
+                        train_dataset, batch_size=batch_size, shuffle=True
+                    )
+                    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+
+                    # Define the model
+                    model = ElectricityConsumptionModel(
+                        input_dim=len(feature_names),
+                        hidden_dim1=hidden_dim1,
+                        hidden_dim2=hidden_dim2,
+                    )
+                    device = torch.device(
+                        "cuda" if torch.cuda.is_available() else "cpu"
+                    )
+                    model.to(device)
+
+                    optimizer = optim.Adam(
+                        model.parameters(), lr=learning_rate
+                    )
+                    criterion = nn.MSELoss()
+
+                    # Train the model
+                    for epoch in range(epochs):
+                        model.train()
+                        train_loss = 0.0
+                        for batch_X, batch_y in train_loader:
+                            batch_X, batch_y = batch_X.to(device), batch_y.to(
+                                device
+                            )
+                            optimizer.zero_grad()
+                            outputs = model(batch_X)
+                            loss = criterion(outputs, batch_y)
+                            loss.backward()
+                            optimizer.step()
+                            train_loss += loss.item()
+
+                        # Validation
+                        model.eval()
+                        val_loss = 0.0
+                        correct_predictions = 0
+                        total_predictions = 0
+                        with torch.no_grad():
+                            for batch_X, batch_y in val_loader:
+                                batch_X, batch_y = batch_X.to(
+                                    device
+                                ), batch_y.to(device)
+                                outputs = model(batch_X)
+                                loss = criterion(outputs, batch_y)
+                                val_loss += loss.item()
+
+                                # Error analysis
+                                error = torch.abs(outputs - batch_y)
+                                within_range = error <= 2
+                                correct_predictions += (
+                                    within_range.sum().item()
+                                )
+                                total_predictions += len(batch_y)
+
+                        val_accuracy = (
+                            correct_predictions / total_predictions * 100
+                        )
+
+                        print(
+                            f"Trial {trial.number} - Epoch {epoch + 1}: "
+                            f"Train Loss = {train_loss / len(train_loader):.4f}, "
+                            f"Validation Loss = {val_loss / len(val_loader):.4f}, "
+                            f"Validation Accuracy = {val_accuracy:.2f}%"
+                        )
+
+                    return val_loss / len(val_loader)
+
+                # Run the Optuna study
+                study = optuna.create_study(direction="minimize")
+                study.optimize(objective, n_trials=100)
+
+                # Get the best parameters
+                best_params = study.best_params
+                print(f"Best parameters: {best_params}")
+
+                # Save the best parameters to a file
+                with open(hyperparam_config_path, "w") as config_file:
+                    json.dump(best_params, config_file, indent=4)
+                print(f"Hyperparameters saved to {hyperparam_config_path}")
+
+            # Train the final model with the best hyperparameters
+            final_model = ElectricityConsumptionModel(
+                input_dim=len(feature_names),
+                hidden_dim1=best_params["hidden_dim1"],
+                hidden_dim2=best_params["hidden_dim2"],
+            )
+
+            device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu"
+            )
+            final_model.to(device)
+            optimizer = optim.Adam(
+                final_model.parameters(), lr=best_params["learning_rate"]
+            )
+            criterion = nn.MSELoss()
+
+            for epoch in range(best_params["epochs"]):
+                final_model.train()
+                train_loss = 0.0
+                for batch_X, batch_y in train_loader:
+                    batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+                    optimizer.zero_grad()
+                    outputs = final_model(batch_X)
+                    loss = criterion(outputs, batch_y)
+                    loss.backward()
+                    optimizer.step()
+                    train_loss += loss.item()
+
+                # Validation
+                final_model.eval()
+                val_loss = 0.0
+                correct_predictions = 0
+                total_predictions = 0
+                with torch.no_grad():
+                    for batch_X, batch_y in val_loader:
+                        batch_X, batch_y = batch_X.to(device), batch_y.to(
+                            device
+                        )
+                        outputs = final_model(batch_X)
+                        loss = criterion(outputs, batch_y)
+                        val_loss += loss.item()
+
+                        # Count correct predictions
+                        correct_predictions += (
+                            (torch.abs(outputs - batch_y) < 0.05).sum().item()
+                        )
+                        total_predictions += len(batch_y)
+
+                val_accuracy = correct_predictions / total_predictions * 100
+
+                print(
+                    f"Final Model - Epoch {epoch + 1}: "
+                    f"Train Loss = {train_loss / len(train_loader):.4f}, "
+                    f"Validation Loss = {val_loss / len(val_loader):.4f}, "
+                    f"Validation Accuracy = {val_accuracy:.2f}%"
                 )
 
-            print(f"X_scaled shape: {X_scaled.shape}, y shape: {y.shape}")
-            bayes_search.fit(X_scaled, y)
+            # Save the final model
+            torch.save(final_model.state_dict(), model_path)
+            print(f"Final model saved at {model_path}.")
 
-            model = bayes_search.best_estimator_
-            print(f"Best parameters: {bayes_search.best_params_}")
+            # Save the features
+            with open(features_path, "w") as features_file:
+                json.dump(feature_names, features_file, indent=4)
+            print(f"Features saved at {features_path}.")
 
-            # Update gbm_config.json with the best parameters
-            gbm_config.update(bayes_search.best_params_)
-            with open(gbm_config_path, "w") as config_file:
-                json.dump(gbm_config, config_file, indent=4)
-            print(f"Updated {gbm_config_path} with best parameters.")
+            # Evaluate the final model
+            final_model.eval()
+            y_train_pred = []
+            y_val_pred = []
+            with torch.no_grad():
+                for batch_X, _ in train_loader:
+                    batch_X = batch_X.to(device)
+                    preds = final_model(batch_X)
+                    y_train_pred.extend(preds.cpu().numpy())
 
-            # Evaluate after Bayesian optimization
-            y_train_pred = model.predict(X_scaled)
+                for batch_X, _ in val_loader:
+                    batch_X = batch_X.to(device)
+                    preds = final_model(batch_X)
+                    y_val_pred.extend(preds.cpu().numpy())
+
+            y_train_pred = np.expm1(y_train_pred)
+            y_val_pred = np.expm1(y_val_pred)
             train_mae = mean_absolute_error(
-                np.expm1(y), np.expm1(y_train_pred)
+                np.expm1(y[:train_size]), y_train_pred
             )
-            mean_actual = np.mean(np.expm1(y))
-            percentage_accuracy = 100 - (train_mae / mean_actual * 100)
+            val_mae = mean_absolute_error(np.expm1(y[train_size:]), y_val_pred)
 
-            # Split for validation evaluation
-            X_train, X_val, y_train_split, y_val_split = train_test_split(
-                X_scaled, y, test_size=0.2, random_state=42
-            )
-            y_val_pred = model.predict(X_val)
-            val_mae = mean_absolute_error(
-                np.expm1(y_val_split), np.expm1(y_val_pred)
-            )
-            train_val_difference = abs(train_mae - val_mae)
-
-            # Log after Bayesian tuning
             print(
-                f"Bayesian Parameter Tuning - Train MAE={train_mae:.4f}, "
-                f"Validation MAE={val_mae:.4f}, "
-                f"Difference={train_val_difference:.4f}, "
-                f"Percentage Accuracy={percentage_accuracy:.2f}%"
-            )
-
-            # Save training state
-            save_training_state(
-                bayes_search,
-                gbm_config,
-                iteration,
-                train_mae,
-                val_mae,
-                percentage_accuracy,
-                train_val_difference,
-                model_path,
-                gbm_config_path,
-                state_file_path,
-                bayes_search_path,
+                f"Iteration {iteration} - Train MAE={train_mae:.4f}, "
+                f"Validation MAE={val_mae:.4f}"
             )
 
             mae = train_mae
+
+            # Save training status
+            training_status = {
+                "iteration": iteration,
+                "train_mae": train_mae,
+                "val_mae": val_mae,
+                "last_updated": datetime.now().isoformat(),
+                "best_params": best_params,
+            }
+            with open(status_json_path, "w") as status_file:
+                json.dump(training_status, status_file, indent=4)
+            print(f"Training status saved at {status_json_path}.")
 
             if mae <= 3:
                 print("Model achieved target MAE. Training complete.")
@@ -471,11 +396,6 @@ async def retrain_model():
 
     except Exception as e:
         print(f"Error during training: {str(e)}")
-    finally:
-        if interrupted:
-            sys.exit(
-                0
-            )  # Exit the program if interrupted  # Exit the program if interrupted
 
 
 # ---------------------------------------------
