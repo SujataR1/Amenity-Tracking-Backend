@@ -8,7 +8,6 @@ from fastapi import (
     File,
     UploadFile,
 )
-from pydantic import BaseModel
 from Utility_Methods.Utility_Methods import verify_jwt
 from Users.Data_Schemas import (
     UserCreate,

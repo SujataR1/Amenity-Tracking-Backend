@@ -87,7 +87,7 @@ async def logout_user(authorization: str, payload: dict):
             )
             await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
             return {"message": "Successfully logged out"}
-        except Exception as e:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Either you have already logged out, or there's something wrong on our end",
@@ -373,7 +373,7 @@ async def request_password_reset_by_email(email: str) -> str:
             email, purpose=OTPTypeEnum.PASSWORD_RESET
         )
         return result  # Result from `generate_and_send_otp`
-    except HTTPException as e:
+    except HTTPException:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error generating or sending the OTP",
@@ -404,7 +404,7 @@ async def reset_password(email: str, otp_code: str, new_password: str):
         user.password = hashed_password
         await user.save()
         return {"message": "Password has been reset successfully."}
-    except:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Something went wrong on our end",
