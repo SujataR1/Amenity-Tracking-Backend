@@ -465,7 +465,7 @@ async def retrain_model():
             final_model.to(device)
             final_model.train()
 
-            for epoch in range(100):  # Use more epochs for final training
+            for epoch in range(best_params["num_epochs"]):  # Use more epochs for final training
                 train_loss = 0.0
                 train_errors = []
                 correct_predictions = 0
