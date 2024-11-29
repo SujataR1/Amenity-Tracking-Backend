@@ -72,20 +72,20 @@ async def retrain_model():
 
     # Paths for model, scaler, and metadata
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_path = path.join(
-        model_dir, f"Electricity_Consumption_Model_{timestamp}.pt"
+        model_dir, f"Electricity_Consumption_Model.pt"
     )
-    scaler_path = path.join(model_dir, f"Scaler_{timestamp}.pkl")
+    scaler_path = path.join(model_dir, f"Scaler.pkl")
     features_path = path.join(
-        model_dir, f"Electricity_Consumption_Model_Features_{timestamp}.json"
+        model_dir, f"Electricity_Consumption_Model_Features.json"
     )
     user_id_mapping_path = path.join(model_dir, "User_ID_Mapping.pkl")
+    pin_code_mapping_path = path.join(model_dir, "Pin_Code_Mapping.pkl")
     hyperparam_config_path = path.join(
-        model_dir, f"ML_Config_{timestamp}.json"
+        model_dir, f"ML_Config.json"
     )
     status_json_path = path.join(
-        model_dir, f"Electricity_Consumption_Status_{timestamp}.json"
+        model_dir, f"Electricity_Consumption_Model_Training_Status.json"
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -113,6 +113,12 @@ async def retrain_model():
             offset = 0
             batch_size = 25
             merged_data = []
+            pin_code_mapping = (
+                {}
+            )  # Dictionary to store categorical mapping for PIN codes
+            pin_code_counter = (
+                0  # Counter to assign unique categories for PIN codes
+            )
 
             while True:
                 users_batch = (
@@ -153,7 +159,14 @@ async def retrain_model():
                     "nineteen",
                 )
 
-                # Add pin_code to each user's data
+                # Add PIN code mapping
+                for user in users_batch:
+                    pin_code = user["pin_code"]
+                    if pin_code not in pin_code_mapping:
+                        pin_code_mapping[pin_code] = pin_code_counter
+                        pin_code_counter += 1
+
+                # Add categorical PIN codes to consumption data
                 for consumption in consumption_batch:
                     user_id = consumption["user_id"]
                     user_entry = next(
@@ -165,7 +178,9 @@ async def retrain_model():
                         None,
                     )
                     if user_entry:
-                        consumption["pin_code"] = user_entry["pin_code"]
+                        consumption["pin_code_category"] = pin_code_mapping[
+                            user_entry["pin_code"]
+                        ]
 
                 batch_data = pd.merge(
                     pd.DataFrame(consumption_batch),
@@ -211,10 +226,14 @@ async def retrain_model():
             with open(user_id_mapping_path, "wb") as f:
                 pickle.dump(user_id_mapping, f)
 
+            # Save the PIN code mapping for inference
+            with open(pin_code_mapping_path, "wb") as f:
+                pickle.dump(pin_code_mapping, f)
+
             # Define features and target
             feature_names = [
                 "year",
-                "pin_code",
+                "pin_code_category",  # Use the categorical PIN code
                 "one",
                 "two",
                 "three",
@@ -307,6 +326,12 @@ async def retrain_model():
                 weight_decay = trial.suggest_float(
                     "weight_decay", 1e-6, 1e-3, log=True
                 )
+                num_epochs = trial.suggest_int(
+                    "epochs",
+                    20,
+                    100,
+                    step=5,  # Tune number of epochs between 10 and 50
+                )
 
                 model = ElectricityConsumptionModel(
                     num_users=len(user_id_mapping),
@@ -325,10 +350,15 @@ async def retrain_model():
                 model.to(device)
 
                 for epoch in range(
-                    20
+                    num_epochs
                 ):  # Optuna limits epochs for faster trials
                     model.train()
                     train_loss = 0.0
+                    train_errors = []
+                    correct_predictions = 0
+                    total_predictions = 0
+
+                    # Training loop
                     for user_ids, features, targets in train_loader:
                         user_ids, features, targets = (
                             user_ids.to(device),
@@ -342,7 +372,25 @@ async def retrain_model():
                         optimizer.step()
                         train_loss += loss.item()
 
+                        # Track train errors and accuracy
+                        error = torch.abs(outputs - targets)
+                        train_errors.extend(error.cpu().detach().numpy())
+                        within_range = error <= 2  # Predictions within ±2 kWh
+                        correct_predictions += within_range.sum().item()
+                        total_predictions += len(targets)
+
+                    # Calculate training metrics
+                    train_mae = np.mean(train_errors)
+                    train_accuracy = (
+                        correct_predictions / total_predictions
+                    ) * 100
+
+                    # Validation loop
                     val_loss = 0.0
+                    val_errors = []
+                    correct_predictions = 0
+                    total_predictions = 0
+
                     with torch.no_grad():
                         model.eval()
                         for user_ids, features, targets in val_loader:
@@ -355,17 +403,41 @@ async def retrain_model():
                             loss = criterion(outputs, targets)
                             val_loss += loss.item()
 
+                            # Track validation errors and accuracy
+                            error = torch.abs(outputs - targets)
+                            val_errors.extend(error.cpu().detach().numpy())
+                            within_range = (
+                                error <= 2
+                            )  # Predictions within ±2 kWh
+                            correct_predictions += within_range.sum().item()
+                            total_predictions += len(targets)
+
+                    # Calculate validation metrics
+                    val_mae = np.mean(val_errors)
+                    val_accuracy = (
+                        correct_predictions / total_predictions
+                    ) * 100
+
+                    # Calculate MAE difference
+                    mae_difference = abs(train_mae - val_mae)
+
+                    # Print metrics
                     print(
-                        f"Trial {trial.number} - Epoch {epoch + 1}: "
+                        f"Trial {trial.number} - Epoch {epoch + 1}/{num_epochs}: "
                         f"Train Loss = {train_loss:.4f}, "
-                        f"Validation Loss = {val_loss:.4f}"
+                        f"Validation Loss = {val_loss:.4f}, "
+                        f"Train MAE = {train_mae:.4f}, "
+                        f"Validation MAE = {val_mae:.4f}, "
+                        f"MAE Difference = {mae_difference:.4f}, "
+                        f"Training Accuracy = {train_accuracy:.4f}, "
+                        f"Validation Accuracy = {val_accuracy:.2f}%"
                     )
 
                 return val_loss / len(val_loader)
 
             # Run Optuna optimization
             study = optuna.create_study(direction="minimize")
-            study.optimize(objective, n_trials=50)
+            study.optimize(objective, n_trials=75)
 
             # Save best parameters
             best_params = study.best_params
@@ -395,6 +467,11 @@ async def retrain_model():
 
             for epoch in range(100):  # Use more epochs for final training
                 train_loss = 0.0
+                train_errors = []
+                correct_predictions = 0
+                total_predictions = 0
+
+                # Training loop
                 for user_ids, features, targets in train_loader:
                     user_ids, features, targets = (
                         user_ids.to(device),
@@ -408,7 +485,25 @@ async def retrain_model():
                     optimizer.step()
                     train_loss += loss.item()
 
+                    # Track train errors and accuracy
+                    error = torch.abs(outputs - targets)
+                    train_errors.extend(error.cpu().detach().numpy())
+                    within_range = error <= 2  # Predictions within ±2 kWh
+                    correct_predictions += within_range.sum().item()
+                    total_predictions += len(targets)
+
+                # Calculate training metrics
+                train_mae = np.mean(train_errors)
+                train_accuracy = (
+                    correct_predictions / total_predictions
+                ) * 100
+
+                # Validation loop
                 val_loss = 0.0
+                val_errors = []
+                correct_predictions = 0
+                total_predictions = 0
+
                 with torch.no_grad():
                     final_model.eval()
                     for user_ids, features, targets in val_loader:
@@ -420,15 +515,30 @@ async def retrain_model():
                         outputs = final_model(user_ids, features)
                         val_loss += criterion(outputs, targets).item()
 
-                train_mae = train_loss / len(train_loader)
-                val_mae = val_loss / len(val_loader)
+                        # Track validation errors and accuracy
+                        error = torch.abs(outputs - targets)
+                        val_errors.extend(error.cpu().detach().numpy())
+                        within_range = error <= 2  # Predictions within ±2 kWh
+                        correct_predictions += within_range.sum().item()
+                        total_predictions += len(targets)
+
+                # Calculate validation metrics
+                val_mae = np.mean(val_errors)
+                val_accuracy = (correct_predictions / total_predictions) * 100
+
+                # Calculate MAE difference
                 mae_difference = abs(train_mae - val_mae)
 
+                # Print metrics
                 print(
-                    f"Final Model - Epoch {epoch + 1}: "
-                    f"Train Loss = {train_mae:.4f}, "
-                    f"Validation Loss = {val_mae:.4f}, "
-                    f"MAE Difference = {mae_difference:.4f}"
+                    f"Final Model - Epoch {epoch + 1}/100: "
+                    f"Train Loss = {train_loss:.4f}, "
+                    f"Validation Loss = {val_loss:.4f}, "
+                    f"Train MAE = {train_mae:.4f}, "
+                    f"Validation MAE = {val_mae:.4f}, "
+                    f"MAE Difference = {mae_difference:.4f}, "
+                    f"Train Accuracy = {train_accuracy:.4f}, "
+                    f"Validation Accuracy = {val_accuracy:.2f}%"
                 )
 
             # Save final model
