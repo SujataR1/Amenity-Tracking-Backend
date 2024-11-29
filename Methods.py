@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from decouple import config
 import traceback
-from typing import Optional, Callable, Union
+from typing import Optional, Callable
 import asyncio
 
 

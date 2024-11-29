@@ -14,6 +14,7 @@ from Machine_Learning.Methods import ElectricityConsumptionModel
 import numpy as np
 import pickle
 
+
 async def predict_consumption(month, year, payload: dict):
     """
     Predicts electricity consumption for a user based on their history, locality trends,
@@ -30,7 +31,9 @@ async def predict_consumption(month, year, payload: dict):
     # Paths to model, scaler, and metadata
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = os.path.join(model_dir, "Electricity_Consumption_Model.pt")
-    features_path = os.path.join(model_dir, "Electricity_Consumption_Model_Features.json")
+    features_path = os.path.join(
+        model_dir, "Electricity_Consumption_Model_Features.json"
+    )
     user_id_mapping_path = os.path.join(model_dir, "User_ID_Mapping.pkl")
     scaler_path = os.path.join(model_dir, "Scaler.pkl")
 
@@ -40,15 +43,21 @@ async def predict_consumption(month, year, payload: dict):
 
     # Check if feature names file exists
     if not os.path.exists(features_path):
-        raise FileNotFoundError("Feature names file not found. Retrain the model and save feature names.")
+        raise FileNotFoundError(
+            "Feature names file not found. Retrain the model and save feature names."
+        )
 
     # Check if user ID mapping exists
     if not os.path.exists(user_id_mapping_path):
-        raise FileNotFoundError("User ID mapping file not found. Retrain the model to generate it.")
+        raise FileNotFoundError(
+            "User ID mapping file not found. Retrain the model to generate it."
+        )
 
     # Check if scaler file exists
     if not os.path.exists(scaler_path):
-        raise FileNotFoundError("Scaler file not found. Retrain the model to generate it.")
+        raise FileNotFoundError(
+            "Scaler file not found. Retrain the model to generate it."
+        )
 
     # Load metadata and model components
     with open(features_path, "r") as f:
@@ -62,19 +71,21 @@ async def predict_consumption(month, year, payload: dict):
 
     # Map user ID
     if user_id not in user_id_mapping:
-        raise ValueError("User ID not found in the trained model. Retrain the model to include this user.")
+        raise ValueError(
+            "User ID not found in the trained model. Retrain the model to include this user."
+        )
 
     user_mapped_id = user_id_mapping[user_id]
 
     # Define the model architecture
     input_dim = len(all_features)  # Feature count
     model = ElectricityConsumptionModel(
-        num_users=len(user_id_mapping), 
-        input_dim=input_dim, 
+        num_users=len(user_id_mapping),
+        input_dim=input_dim,
         hidden_dim1=128,  # These should match the best params from retraining
-        hidden_dim2=64, 
+        hidden_dim2=64,
         embedding_dim=32,  # Adjust based on your embedding dimension
-        dropout_rate=0.3  # Adjust based on the dropout rate in your model
+        dropout_rate=0.3,  # Adjust based on the dropout rate in your model
     )
 
     # Load the trained model weights
@@ -112,7 +123,9 @@ async def predict_consumption(month, year, payload: dict):
 
         # Encode month as one-hot
         month_num = datetime.strptime(month, "%B").month
-        month_data = {f"month_{i}": 1 if i == month_num else 0 for i in range(1, 13)}
+        month_data = {
+            f"month_{i}": 1 if i == month_num else 0 for i in range(1, 13)
+        }
 
         # One-hot encode 'nineteen' (climate)
         climate = str(user_questionnaire.nineteen)
@@ -120,7 +133,10 @@ async def predict_consumption(month, year, payload: dict):
 
         # One-hot encode 'seventeen' (vacation months)
         seventeen_months = user_questionnaire.seventeen
-        seventeen_data = {f"vacation_month_{m}": (1 if m in seventeen_months else 0) for m in range(1, 13)}
+        seventeen_data = {
+            f"vacation_month_{m}": (1 if m in seventeen_months else 0)
+            for m in range(1, 13)
+        }
 
         # Combine all features into a single dictionary
         input_data = pd.DataFrame(
@@ -143,15 +159,23 @@ async def predict_consumption(month, year, payload: dict):
         input_data_scaled = scaler.transform(input_data)
 
         # Convert to PyTorch tensors
-        user_id_tensor = torch.tensor([user_mapped_id], dtype=torch.long).to(device)
-        feature_tensor = torch.tensor(input_data_scaled, dtype=torch.float32).to(device)
+        user_id_tensor = torch.tensor([user_mapped_id], dtype=torch.long).to(
+            device
+        )
+        feature_tensor = torch.tensor(
+            input_data_scaled, dtype=torch.float32
+        ).to(device)
 
         # Make the prediction
         with torch.no_grad():
-            predicted_consumption = model(user_id_tensor, feature_tensor).cpu().numpy()[0][0]
+            predicted_consumption = (
+                model(user_id_tensor, feature_tensor).cpu().numpy()[0][0]
+            )
 
         # Convert values to standard Python types for JSON serialization
-        predicted_consumption = float(np.expm1(predicted_consumption))  # Revert log1p transformation
+        predicted_consumption = float(
+            np.expm1(predicted_consumption)
+        )  # Revert log1p transformation
 
         # Return the result with serialized types
         return {

@@ -1,4 +1,3 @@
-import os
 import json
 import pickle
 import optuna
@@ -72,18 +71,14 @@ async def retrain_model():
 
     # Paths for model, scaler, and metadata
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
-    model_path = path.join(
-        model_dir, f"Electricity_Consumption_Model.pt"
-    )
+    model_path = path.join(model_dir, f"Electricity_Consumption_Model.pt")
     scaler_path = path.join(model_dir, f"Scaler.pkl")
     features_path = path.join(
         model_dir, f"Electricity_Consumption_Model_Features.json"
     )
     user_id_mapping_path = path.join(model_dir, "User_ID_Mapping.pkl")
     pin_code_mapping_path = path.join(model_dir, "Pin_Code_Mapping.pkl")
-    hyperparam_config_path = path.join(
-        model_dir, f"ML_Config.json"
-    )
+    hyperparam_config_path = path.join(model_dir, f"ML_Config.json")
     status_json_path = path.join(
         model_dir, f"Electricity_Consumption_Model_Training_Status.json"
     )
@@ -465,7 +460,9 @@ async def retrain_model():
             final_model.to(device)
             final_model.train()
 
-            for epoch in range(best_params["epochs"]):  # Use more epochs for final training
+            for epoch in range(
+                best_params["epochs"]
+            ):  # Use more epochs for final training
                 train_loss = 0.0
                 train_errors = []
                 correct_predictions = 0
