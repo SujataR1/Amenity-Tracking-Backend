@@ -472,8 +472,8 @@ async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
 async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
     user_id = payload.get("user_id")
     directory = os.path.join(
-        f"{config("USER_MEDIA_PATH")}",
-        f"{config("USER_PROFILE_PICTURES_DIRECTORY")}",
+        f"{config('USER_MEDIA_PATH')}",
+        f"{config('USER_PROFILE_PICTURES_DIRECTORY')}",
     )
     os.makedirs(directory, exist_ok=True)
 
@@ -488,7 +488,7 @@ async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
     if len(file_size) > int(config("MAXIMUM_IMAGE_SIZE")) * 1024 * 1024:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size should not exceed {config("MAXIMUM_IMAGE_SIZE")} mBs.",
+            detail=f"File size should not exceed {config('MAXIMUM_IMAGE_SIZE')} mBs.",
         )
 
     await file.seek(0)
@@ -496,7 +496,7 @@ async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
     # Create the file path
     file_path = os.path.join(
         directory,
-        f"{config("USER_PROFILE_PICTURE_PREFIX")}_{user_id}_{file.filename}",
+        f"{config('USER_PROFILE_PICTURE_PREFIX')}_{user_id}_{file.filename}",
     )
 
     # Save the file to the directory
