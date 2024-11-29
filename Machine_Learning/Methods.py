@@ -328,7 +328,7 @@ async def retrain_model():
                 )
                 num_epochs = trial.suggest_int(
                     "epochs",
-                    20,
+                    30,
                     100,
                     step=5,  # Tune number of epochs between 10 and 50
                 )
