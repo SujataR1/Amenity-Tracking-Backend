@@ -2,7 +2,6 @@ import json
 import os
 import random
 from tortoise.transactions import in_transaction
-from decouple import config
 from Database_and_ORM.Database_Models import User, QuestionnaireAnswers
 from Database_and_ORM.Database_Connector import init_db, close_db
 from Questionnaire.Data_Schemas import ClimateEnum, MonthEnum
