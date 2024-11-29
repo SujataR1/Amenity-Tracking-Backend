@@ -199,6 +199,13 @@ async def retrain_model():
             ]
 
             X = final_data[feature_names]
+
+            lower_cap = final_data["electricity_consumption"].quantile(0.01)
+            upper_cap = final_data["electricity_consumption"].quantile(0.99)
+            final_data["electricity_consumption"] = final_data[
+                "electricity_consumption"
+            ].clip(lower=lower_cap, upper=upper_cap)
+
             y = final_data["electricity_consumption"]
 
             # Align features
