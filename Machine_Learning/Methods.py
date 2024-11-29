@@ -27,27 +27,47 @@ cudnn.benchmark = True  # Optimize GPU kernel selection for CUDA
 
 
 class ElectricityConsumptionModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim1, hidden_dim2, dropout_rate):
+    def __init__(
+        self,
+        num_users,
+        input_dim,
+        hidden_dim1,
+        hidden_dim2,
+        embedding_dim=50,
+        dropout_rate=0.2,
+    ):
         super(ElectricityConsumptionModel, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim1),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_dim1, hidden_dim2),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_dim2, 1),
-        )
+        # Embedding layer for user_id
+        self.user_embedding = nn.Embedding(num_users, embedding_dim)
 
-    def forward(self, x):
-        return self.net(x)
+        # Feedforward layers for other input features + user embedding
+        self.fc1 = nn.Linear(input_dim + embedding_dim, hidden_dim1)
+        self.dropout1 = nn.Dropout(dropout_rate)
+        self.fc2 = nn.Linear(hidden_dim1, hidden_dim2)
+        self.dropout2 = nn.Dropout(dropout_rate)
+        self.fc3 = nn.Linear(hidden_dim2, 1)
+
+    def forward(self, user_ids, features):
+        # Get the user embeddings
+        user_embeds = self.user_embedding(user_ids)
+
+        # Concatenate user embeddings with other features
+        x = torch.cat((features, user_embeds), dim=1)
+
+        # Pass through feedforward layers
+        x = torch.relu(self.fc1(x))
+        x = self.dropout1(x)
+        x = torch.relu(self.fc2(x))
+        x = self.dropout2(x)
+        x = self.fc3(x)
+        return x
 
 
 async def retrain_model():
     """
     Retrains the electricity consumption prediction model using PyTorch
-    and Optuna for hyperparameter tuning. Includes robust error handling,
-    logging, versioned model saving, and resource management.
+    and Optuna for hyperparameter tuning. Includes user_id embeddings,
+    Winsorization for outlier handling, and robust error handling.
     """
 
     # Paths for model, scaler, and metadata
@@ -60,12 +80,14 @@ async def retrain_model():
     features_path = path.join(
         model_dir, f"Electricity_Consumption_Model_Features_{timestamp}.json"
     )
-    status_json_path = path.join(
-        model_dir, f"Electricity_Consumption_Status_{timestamp}.json"
-    )
+    user_id_mapping_path = path.join(model_dir, "User_ID_Mapping.pkl")
     hyperparam_config_path = path.join(
         model_dir, f"ML_Config_{timestamp}.json"
     )
+    status_json_path = path.join(
+        model_dir, f"Electricity_Consumption_Status_{timestamp}.json"
+    )
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if not path.exists(model_dir):
@@ -79,6 +101,7 @@ async def retrain_model():
 
     # Ensure GPU memory usage is limited
     if torch.cuda.is_available():
+        total_memory = torch.cuda.get_device_properties(0).total_memory
         torch.cuda.set_per_process_memory_fraction(0.75, 0)
 
     try:
@@ -162,12 +185,31 @@ async def retrain_model():
             final_data.fillna(0, inplace=True)
             print(f"Final data shape: {final_data.shape}")
 
+            # Winsorize outliers
+            consumption_column = "electricity_consumption"
+            lower_limit = final_data[consumption_column].quantile(0.01)
+            upper_limit = final_data[consumption_column].quantile(0.99)
+            final_data[consumption_column] = np.clip(
+                final_data[consumption_column], lower_limit, upper_limit
+            )
+
             # Encode categorical features
             final_data = pd.get_dummies(
                 final_data,
                 columns=["month", "nineteen", "seventeen"],
                 prefix=["month", "climate", "vacation_month"],
             )
+
+            # Map user_ids to integers for embedding
+            user_id_mapping = {
+                user_id: idx
+                for idx, user_id in enumerate(final_data["user_id"].unique())
+            }
+            final_data["user_id"] = final_data["user_id"].map(user_id_mapping)
+
+            # Save the mapping for inference
+            with open(user_id_mapping_path, "wb") as f:
+                pickle.dump(user_id_mapping, f)
 
             # Define features and target
             feature_names = [
@@ -199,13 +241,6 @@ async def retrain_model():
             ]
 
             X = final_data[feature_names]
-
-            lower_cap = final_data["electricity_consumption"].quantile(0.01)
-            upper_cap = final_data["electricity_consumption"].quantile(0.99)
-            final_data["electricity_consumption"] = final_data[
-                "electricity_consumption"
-            ].clip(lower=lower_cap, upper=upper_cap)
-
             y = final_data["electricity_consumption"]
 
             # Align features
@@ -229,10 +264,17 @@ async def retrain_model():
                 pickle.dump(scaler, f)
 
             # Convert to PyTorch tensors
-            X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
-            y_tensor = torch.tensor(y.values, dtype=torch.float32).view(-1, 1)
+            user_id_tensor = torch.tensor(
+                final_data["user_id"].values, dtype=torch.long
+            )
+            feature_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+            target_tensor = torch.tensor(y.values, dtype=torch.float32).view(
+                -1, 1
+            )
 
-            dataset = TensorDataset(X_tensor, y_tensor)
+            dataset = TensorDataset(
+                user_id_tensor, feature_tensor, target_tensor
+            )
             train_size = int(0.8 * len(dataset))
             val_size = len(dataset) - train_size
             train_dataset, val_dataset = torch.utils.data.random_split(
@@ -244,8 +286,9 @@ async def retrain_model():
             )
             val_loader = DataLoader(val_dataset, batch_size=32)
 
-            # Optuna hyperparameter optimization
+            # Define the Optuna optimization objective
             def objective(trial):
+                # Trial parameters for the neural network
                 learning_rate = trial.suggest_float(
                     "learning_rate", 1e-5, 1e-2, log=True
                 )
@@ -255,6 +298,9 @@ async def retrain_model():
                 hidden_dim2 = trial.suggest_int(
                     "hidden_dim2", 32, 256, step=16
                 )
+                embedding_dim = trial.suggest_int(
+                    "embedding_dim", 10, 100, step=10
+                )
                 dropout_rate = trial.suggest_float(
                     "dropout_rate", 0.1, 0.5, step=0.1
                 )
@@ -263,9 +309,11 @@ async def retrain_model():
                 )
 
                 model = ElectricityConsumptionModel(
+                    num_users=len(user_id_mapping),
                     input_dim=len(feature_names),
                     hidden_dim1=hidden_dim1,
                     hidden_dim2=hidden_dim2,
+                    embedding_dim=embedding_dim,
                     dropout_rate=dropout_rate,
                 )
                 optimizer = optim.Adam(
@@ -276,54 +324,41 @@ async def retrain_model():
                 criterion = nn.L1Loss()
                 model.to(device)
 
-                for epoch in range(20):  # Limit epochs for faster trials
+                for epoch in range(
+                    20
+                ):  # Optuna limits epochs for faster trials
                     model.train()
                     train_loss = 0.0
-                    for batch_X, batch_y in train_loader:
-                        batch_X, batch_y = batch_X.to(device), batch_y.to(
-                            device
+                    for user_ids, features, targets in train_loader:
+                        user_ids, features, targets = (
+                            user_ids.to(device),
+                            features.to(device),
+                            targets.to(device),
                         )
                         optimizer.zero_grad()
-                        outputs = model(batch_X)
-                        loss = criterion(outputs, batch_y)
+                        outputs = model(user_ids, features)
+                        loss = criterion(outputs, targets)
                         loss.backward()
                         optimizer.step()
                         train_loss += loss.item()
 
                     val_loss = 0.0
-                    correct_predictions = 0
-                    total_predictions = 0
                     with torch.no_grad():
                         model.eval()
-                        for batch_X, batch_y in val_loader:
-                            batch_X, batch_y = batch_X.to(device), batch_y.to(
-                                device
+                        for user_ids, features, targets in val_loader:
+                            user_ids, features, targets = (
+                                user_ids.to(device),
+                                features.to(device),
+                                targets.to(device),
                             )
-                            outputs = model(batch_X)
-                            loss = criterion(outputs, batch_y)
+                            outputs = model(user_ids, features)
+                            loss = criterion(outputs, targets)
                             val_loss += loss.item()
-
-                            # Error analysis
-                            error = torch.abs(outputs - batch_y)
-                            within_range = (
-                                error <= 2
-                            )  # Predictions within 2 units
-                            correct_predictions += within_range.sum().item()
-                            total_predictions += len(batch_y)
-
-                    val_accuracy = (
-                        correct_predictions / total_predictions
-                    ) * 100
-                    train_mae = train_loss / len(train_loader)
-                    val_mae = val_loss / len(val_loader)
-                    mae_difference = abs(train_mae - val_mae)
 
                     print(
                         f"Trial {trial.number} - Epoch {epoch + 1}: "
                         f"Train Loss = {train_loss:.4f}, "
-                        f"Validation Loss = {val_loss:.4f}, "
-                        f"Validation Accuracy = {val_accuracy:.2f}%, "
-                        f"MAE Difference = {mae_difference:.4f}"
+                        f"Validation Loss = {val_loss:.4f}"
                     )
 
                 return val_loss / len(val_loader)
@@ -331,67 +366,68 @@ async def retrain_model():
             # Run Optuna optimization
             study = optuna.create_study(direction="minimize")
             study.optimize(objective, n_trials=50)
-            best_params = study.best_params
 
-            # Save hyperparameters
+            # Save best parameters
+            best_params = study.best_params
+            print(f"Best hyperparameters: {best_params}")
             with open(hyperparam_config_path, "w") as f:
                 json.dump(best_params, f, indent=4)
 
-            # Train the final model
+            # Train final model
             final_model = ElectricityConsumptionModel(
+                num_users=len(user_id_mapping),
                 input_dim=len(feature_names),
                 hidden_dim1=best_params["hidden_dim1"],
                 hidden_dim2=best_params["hidden_dim2"],
+                embedding_dim=best_params["embedding_dim"],
                 dropout_rate=best_params["dropout_rate"],
             )
+
+            criterion = nn.L1Loss()
+
             optimizer = optim.Adam(
                 final_model.parameters(),
                 lr=best_params["learning_rate"],
                 weight_decay=best_params["weight_decay"],
             )
-            criterion = nn.L1Loss()
             final_model.to(device)
+            final_model.train()
 
             for epoch in range(100):  # Use more epochs for final training
-                final_model.train()
                 train_loss = 0.0
-                for batch_X, batch_y in train_loader:
-                    batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+                for user_ids, features, targets in train_loader:
+                    user_ids, features, targets = (
+                        user_ids.to(device),
+                        features.to(device),
+                        targets.to(device),
+                    )
                     optimizer.zero_grad()
-                    outputs = final_model(batch_X)
-                    loss = criterion(outputs, batch_y)
+                    outputs = final_model(user_ids, features)
+                    loss = criterion(outputs, targets)
                     loss.backward()
                     optimizer.step()
                     train_loss += loss.item()
 
                 val_loss = 0.0
-                correct_predictions = 0
-                total_predictions = 0
                 with torch.no_grad():
                     final_model.eval()
-                    for batch_X, batch_y in val_loader:
-                        batch_X, batch_y = batch_X.to(device), batch_y.to(
-                            device
+                    for user_ids, features, targets in val_loader:
+                        user_ids, features, targets = (
+                            user_ids.to(device),
+                            features.to(device),
+                            targets.to(device),
                         )
-                        outputs = final_model(batch_X)
-                        val_loss += criterion(outputs, batch_y).item()
+                        outputs = final_model(user_ids, features)
+                        val_loss += criterion(outputs, targets).item()
 
-                        # Error analysis
-                        error = torch.abs(outputs - batch_y)
-                        within_range = error <= 2
-                        correct_predictions += within_range.sum().item()
-                        total_predictions += len(batch_y)
-
-                val_accuracy = (correct_predictions / total_predictions) * 100
                 train_mae = train_loss / len(train_loader)
                 val_mae = val_loss / len(val_loader)
                 mae_difference = abs(train_mae - val_mae)
 
                 print(
                     f"Final Model - Epoch {epoch + 1}: "
-                    f"Train Loss = {train_loss:.4f}, "
-                    f"Validation Loss = {val_loss:.4f}, "
-                    f"Validation Accuracy = {val_accuracy:.2f}%, "
+                    f"Train Loss = {train_mae:.4f}, "
+                    f"Validation Loss = {val_mae:.4f}, "
                     f"MAE Difference = {mae_difference:.4f}"
                 )
 
