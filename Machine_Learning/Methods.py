@@ -128,7 +128,12 @@ async def retrain_model():
                 user_ids = [user["id"] for user in users_batch]
                 consumption_batch = await ElectricityConsumption.filter(
                     user_id__in=user_ids
-                ).values("user_id", "year", "month", "electricity_consumption")
+                ).values(
+                    "user_id",
+                    "year",
+                    "month",
+                    "electricity_consumption",
+                )
                 questionnaire_batch = await QuestionnaireAnswers.filter(
                     user_id__in=user_ids
                 ).values(

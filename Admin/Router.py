@@ -54,7 +54,8 @@ async def create_admin_endpoint(admin: AdminCreate):
     response = await create_admin(admin)
     if "error" in response:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=response["error"]
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=response["error"],
         )
     return response
 
@@ -76,7 +77,8 @@ async def login_admin_endpoint(response: Response, admin_data: AdminUpdate):
 
 @Admin_Router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout_admin_endpoint(
-    authorization: str = Header(None), payload: dict = Depends(verify_jwt)
+    authorization: str = Header(None),
+    payload: dict = Depends(verify_jwt),
 ):
     """
     Logs out the admin by blacklisting the JWT token.
@@ -103,7 +105,8 @@ async def update_admin_endpoint(
 
 @Admin_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_admin_endpoint(
-    authorization: str = Header(None), payload: dict = Depends(verify_jwt)
+    authorization: str = Header(None),
+    payload: dict = Depends(verify_jwt),
 ):
     """
     Deletes the admin account and blacklists the JWT token.
@@ -148,7 +151,9 @@ async def verify_2fa_login_endpoint(
 
 
 @Admin_Router.post("/password-reset/request", status_code=status.HTTP_200_OK)
-async def request_password_reset_endpoint(request_data: PasswordResetRequest):
+async def request_password_reset_endpoint(
+    request_data: PasswordResetRequest,
+):
     """
     Sends a password reset OTP to the admin's email.
     """
@@ -156,7 +161,9 @@ async def request_password_reset_endpoint(request_data: PasswordResetRequest):
 
 
 @Admin_Router.post("/password-reset/confirm", status_code=status.HTTP_200_OK)
-async def confirm_password_reset_endpoint(request_data: PasswordResetConfirm):
+async def confirm_password_reset_endpoint(
+    request_data: PasswordResetConfirm,
+):
     """
     Resets the admin's password after verifying the OTP.
     """
@@ -233,7 +240,9 @@ async def generate_otp_endpoint(otp_request: OTPRequest):
 
 
 @Admin_Router.post("/refresh-user-count", status_code=status.HTTP_200_OK)
-async def refresh_user_count_endpoint(payload: dict = Depends(verify_jwt)):
+async def refresh_user_count_endpoint(
+    payload: dict = Depends(verify_jwt),
+):
     return await update_admin_user_count()
 
 
@@ -269,5 +278,6 @@ async def retrain_model_api(payload: dict = Depends(verify_jwt)):
         return result
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error during model retraining: {str(e)}"
+            status_code=500,
+            detail=f"Error during model retraining: {str(e)}",
         )

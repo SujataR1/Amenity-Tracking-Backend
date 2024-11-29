@@ -48,7 +48,8 @@ async def create_user_endpoint(user: UserCreate):
     new_user = await create_user(user)
     if "error" in new_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=new_user["error"]
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=new_user["error"],
         )
     return new_user
 
@@ -70,7 +71,8 @@ async def login_user(response: Response, login_data: LoginData):
 
 @User_Router.post("/logout")
 async def logout_user_endpoint(
-    authorization: str = Header(None), payload: dict = Depends(verify_jwt)
+    authorization: str = Header(None),
+    payload: dict = Depends(verify_jwt),
 ):
     """
     Logs out the user by blacklisting the JWT token.
@@ -94,7 +96,8 @@ async def update_user_endpoint(
 
 @User_Router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user_endpoint(
-    authorization: str = Header(None), payload: dict = Depends(verify_jwt)
+    authorization: str = Header(None),
+    payload: dict = Depends(verify_jwt),
 ):
     """
     Endpoint to delete a user and blacklist the token.

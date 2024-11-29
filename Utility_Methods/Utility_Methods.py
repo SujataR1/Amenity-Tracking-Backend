@@ -48,7 +48,8 @@ async def verify_jwt(authorization: str = Header(None)):
         )
     except jwt.InvalidTokenError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
         )
 
     # Check if the token is blacklisted
@@ -113,7 +114,9 @@ async def get_hashed_password(password):
     return str(bcrypt.hash(password))
 
 
-async def encode_path_to_base64(path: str) -> Union[str, Dict[str, str]]:
+async def encode_path_to_base64(
+    path: str,
+) -> Union[str, Dict[str, str]]:
     """
     Encodes the file or all files in the directory at the given path to Base64 with MIME type.
     If the path is a file, returns a Base64 string.
