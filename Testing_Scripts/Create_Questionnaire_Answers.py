@@ -64,7 +64,10 @@ def generate_questionnaire_answers(zip_code, zip_to_climate_mapping):
         > 1,  # Washing machine usage higher with more people
         "eight": num_people > 3
         and nineteen
-        in ["Humid", "Hot"],  # Dishwashers more common in larger families
+        in [
+            "Humid",
+            "Hot",
+        ],  # Dishwashers more common in larger families
         "nine": True,  # Assume most homes use induction ovens or hot plates
         "ten": True,  # Assume most homes use microwaves
         "eleven": nineteen in ["Cold"],  # Kettles more common in cold climates

@@ -1,4 +1,8 @@
-from Database_and_ORM.Database_Models import User, Blacklisted_Tokens, OTP
+from Database_and_ORM.Database_Models import (
+    User,
+    Blacklisted_Tokens,
+    OTP,
+)
 from Users.Data_Schemas import UserCreate, OTPTypeEnum
 from Comms.Methods import send_email, get_email_content
 from tortoise.exceptions import IntegrityError, DoesNotExist
@@ -115,7 +119,8 @@ async def update_user(update_data: Dict, payload: dict):
         user = await User.get_or_none(id=user_id)
         if not user:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
             )
 
         changes = {}
@@ -163,7 +168,8 @@ async def delete_user(payload: dict, authorization: str):
     user = await User.get_or_none(id=user_id)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
         )
 
     count = await update_admin_user_count()
@@ -390,7 +396,9 @@ async def reset_password(email: str, otp_code: str, new_password: str):
 
     # Verify OTP using the existing verify_otp method
     verified = await verify_otp(
-        otp_code=otp_code, user_id=user.id, purpose=OTPTypeEnum.PASSWORD_RESET
+        otp_code=otp_code,
+        user_id=user.id,
+        purpose=OTPTypeEnum.PASSWORD_RESET,
     )
     if not verified:
         raise HTTPException(
@@ -477,7 +485,11 @@ async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
     )
     os.makedirs(directory, exist_ok=True)
 
-    if file.content_type not in ["image/jpeg", "image/png", "image/jpg"]:
+    if file.content_type not in [
+        "image/jpeg",
+        "image/png",
+        "image/jpg",
+    ]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only JPEG and PNG images are allowed.",
@@ -521,7 +533,8 @@ async def get_profile_picture(payload: dict) -> dict:
     user = await User.get_or_none(id=user_id)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
         )
 
     # Check if user has a profile picture path
