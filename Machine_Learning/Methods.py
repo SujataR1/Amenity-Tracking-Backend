@@ -41,7 +41,7 @@ class ElectricityConsumptionModel(nn.Module):
 async def retrain_model():
     """
     Retrains the electricity consumption prediction model using PyTorch
-    and Optuna for hyperparameter tuning. Saves state after each fitting attempt.
+    and Optuna for hyperparameter tuning. Displays metrics after each epoch.
     """
     model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
     model_path = path.join(model_dir, "Electricity_Consumption_Model.pt")
@@ -221,18 +221,18 @@ async def retrain_model():
 
                 def objective(trial):
                     learning_rate = trial.suggest_float(
-                        "learning_rate", 1e-4, 1e-2, log=True
+                        "learning_rate", 1e-5, 5e-3, log=True
                     )
                     hidden_dim1 = trial.suggest_int(
-                        "hidden_dim1", 64, 256, step=32
+                        "hidden_dim1", 128, 1024, step=32
                     )
                     hidden_dim2 = trial.suggest_int(
-                        "hidden_dim2", 32, 128, step=16
+                        "hidden_dim2", 64, 512, step=16
                     )
                     batch_size = trial.suggest_categorical(
-                        "batch_size", [16, 32, 64]
+                        "batch_size", [128, 256, 512]
                     )
-                    epochs = trial.suggest_int("epochs", 10, 50)
+                    epochs = trial.suggest_int("epochs", 10, 200)
 
                     train_loader = DataLoader(
                         train_dataset, batch_size=batch_size, shuffle=True
@@ -255,6 +255,7 @@ async def retrain_model():
 
                     for epoch in range(epochs):
                         model.train()
+                        train_loss = 0.0
                         for batch_X, batch_y in train_loader:
                             batch_X, batch_y = batch_X.to(device), batch_y.to(
                                 device
@@ -264,15 +265,42 @@ async def retrain_model():
                             loss = criterion(outputs, batch_y)
                             loss.backward()
                             optimizer.step()
+                            train_loss += loss.item()
 
-                    val_loss = 0.0
-                    with torch.no_grad():
-                        for batch_X, batch_y in val_loader:
-                            batch_X, batch_y = batch_X.to(device), batch_y.to(
-                                device
-                            )
-                            outputs = model(batch_X)
-                            val_loss += criterion(outputs, batch_y).item()
+                        val_loss = 0.0
+                        correct_predictions = 0
+                        total_predictions = 0
+                        with torch.no_grad():
+                            for batch_X, batch_y in val_loader:
+                                batch_X, batch_y = batch_X.to(
+                                    device
+                                ), batch_y.to(device)
+                                outputs = model(batch_X)
+                                loss = criterion(outputs, batch_y)
+                                val_loss += loss.item()
+
+                                # Error analysis
+                                error = torch.abs(outputs - batch_y)
+                                within_range = error <= 2
+                                correct_predictions += (
+                                    within_range.sum().item()
+                                )
+                                total_predictions += len(batch_y)
+
+                        val_accuracy = (
+                            correct_predictions / total_predictions * 100
+                        )
+                        train_mae = train_loss / len(train_loader)
+                        val_mae = val_loss / len(val_loader)
+                        mae_difference = abs(train_mae - val_mae)
+
+                        print(
+                            f"Trial {trial.number} - Epoch {epoch + 1}: "
+                            f"Train Loss = {train_loss:.4f}, "
+                            f"Validation Loss = {val_loss:.4f}, "
+                            f"Validation Accuracy = {val_accuracy:.2f}%, "
+                            f"MAE Difference = {mae_difference:.2f}"
+                        )
 
                     return val_loss / len(val_loader)
 
@@ -300,6 +328,7 @@ async def retrain_model():
 
             for epoch in range(best_params["epochs"]):
                 final_model.train()
+                train_loss = 0.0
                 for batch_X, batch_y in train_loader:
                     batch_X, batch_y = batch_X.to(device), batch_y.to(device)
                     optimizer.zero_grad()
@@ -307,12 +336,48 @@ async def retrain_model():
                     loss = criterion(outputs, batch_y)
                     loss.backward()
                     optimizer.step()
+                    train_loss += loss.item()
 
+                val_loss = 0.0
+                correct_predictions = 0
+                total_predictions = 0
+                with torch.no_grad():
+                    for batch_X, batch_y in val_loader:
+                        batch_X, batch_y = batch_X.to(device), batch_y.to(
+                            device
+                        )
+                        outputs = final_model(batch_X)
+                        val_loss += criterion(outputs, batch_y).item()
+
+                        error = torch.abs(outputs - batch_y)
+                        within_range = error <= 2
+                        correct_predictions += within_range.sum().item()
+                        total_predictions += len(batch_y)
+
+                val_accuracy = correct_predictions / total_predictions * 100
+                train_mae = train_loss / len(train_loader)
+                val_mae = val_loss / len(val_loader)
+                mae_difference = abs(train_mae - val_mae)
+
+                print(
+                    f"Final Model - Epoch {epoch + 1}: "
+                    f"Train Loss = {train_loss:.4f}, "
+                    f"Validation Loss = {val_loss:.4f}, "
+                    f"Validation Accuracy = {val_accuracy:.2f}%, "
+                    f"MAE Difference = {mae_difference:.2f}"
+                )
+
+            # Save the final model
             torch.save(final_model.state_dict(), model_path)
+            print(f"Final model saved at {model_path}.")
 
+            # Save the features
             with open(features_path, "w") as features_file:
                 json.dump(feature_names, features_file, indent=4)
+            print(f"Features saved at {features_path}.")
 
+            # Evaluate the final model
+            final_model.eval()
             y_train_pred = []
             y_val_pred = []
             with torch.no_grad():
