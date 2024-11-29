@@ -1,12 +1,8 @@
 import pandas as pd
 import os
 from datetime import datetime
-import joblib
 from sklearn.metrics import mean_squared_error
-from tortoise.functions import Avg
-from Machine_Learning.Methods import feature_engineering
 from Database_and_ORM.Database_Models import (
-    ElectricityConsumption,
     QuestionnaireAnswers,
     User,
 )
@@ -15,12 +11,13 @@ import json
 from decouple import config
 import torch
 from Machine_Learning.Methods import ElectricityConsumptionModel
+import numpy as np
 
 
 async def predict_consumption(month, year, payload: dict):
     """
     Predicts electricity consumption for a user based on their history, locality trends,
-    and questionnaire answers using a PyTorch model.
+    and questionnaire answers using the trained PyTorch model.
     """
     user_id = payload.get("user_id")
     user = await User.get_or_none(id=user_id)
@@ -36,6 +33,7 @@ async def predict_consumption(month, year, payload: dict):
     features_path = os.path.join(
         model_dir, "Electricity_Consumption_Model_Features.json"
     )
+    hyperparam_config_path = os.path.join(model_dir, "ML_Config.json")
 
     # Check if the model exists
     if not os.path.exists(model_path):
@@ -47,10 +45,21 @@ async def predict_consumption(month, year, payload: dict):
             "Feature names file not found. Retrain the model and save feature names."
         )
 
+    # Check if hyperparameter configuration file exists
+    if not os.path.exists(hyperparam_config_path):
+        raise FileNotFoundError(
+            "Hyperparameter configuration file not found. Retrain the model to generate it."
+        )
+
+    # Load hyperparameters
+    with open(hyperparam_config_path, "r") as config_file:
+        best_params = json.load(config_file)
+
+    hidden_dim1 = best_params["hidden_dim1"]
+    hidden_dim2 = best_params["hidden_dim2"]
+
     # Define the model architecture
     input_dim = len(json.load(open(features_path)))  # Read feature count
-    hidden_dim1 = 128  # Should match training setup
-    hidden_dim2 = 64
     model = ElectricityConsumptionModel(input_dim, hidden_dim1, hidden_dim2)
 
     # Load the trained model weights
@@ -62,86 +71,72 @@ async def predict_consumption(month, year, payload: dict):
     try:
         # Fetch user's questionnaire answers
         user_questionnaire = await QuestionnaireAnswers.get(user_id=user_id)
-        # Fetch user's ZIP code and locality
+        # Fetch user's ZIP code
         user_data = await User.get(id=user_id).values("pin_code", "id")
 
         # Prepare data for predictions
         questionnaire_data = {
-            "nineteen": user_questionnaire.nineteen,
             "one": user_questionnaire.one,
             "two": user_questionnaire.two,
             "three": user_questionnaire.three,
-            "seven": user_questionnaire.seven,
+            "four": int(user_questionnaire.four),
+            "five": int(user_questionnaire.five),
+            "six": int(user_questionnaire.six),
+            "seven": int(user_questionnaire.seven),
+            "eight": int(user_questionnaire.eight),
+            "nine": int(user_questionnaire.nine),
+            "ten": int(user_questionnaire.ten),
+            "eleven": int(user_questionnaire.eleven),
+            "twelve": int(user_questionnaire.twelve),
+            "thirteen": int(user_questionnaire.thirteen),
+            "fourteen": float(user_questionnaire.fourteen),
+            "fifteen": int(user_questionnaire.fifteen),
+            "sixteen": int(user_questionnaire.sixteen),
             "eighteen": user_questionnaire.eighteen,
         }
 
+        # Encode month as one-hot
         month_num = datetime.strptime(month, "%B").month
+        month_data = {
+            f"month_{i}": 1 if i == month_num else 0 for i in range(1, 13)
+        }
 
-        # Calculate locality averages
-        zip_avg = (
-            await ElectricityConsumption.filter(
-                user__pin_code=user_data["pin_code"], year=year
-            )
-            .annotate(avg_consumption=Avg("electricity_consumption"))
-            .values_list("avg_consumption", flat=True)
-        )
-        nineteen_avg = (
-            await ElectricityConsumption.filter(
-                user__questionnaire_answers__nineteen=user_questionnaire.nineteen,
-                year=year,
-            )
-            .annotate(avg_consumption=Avg("electricity_consumption"))
-            .values_list("avg_consumption", flat=True)
-        )
+        # One-hot encode 'nineteen' (climate)
+        climate = str(user_questionnaire.nineteen)
+        nineteen_data = {f"climate_{climate}": 1}
 
-        zip_avg = zip_avg[0] if zip_avg else None
-        nineteen_avg = nineteen_avg[0] if nineteen_avg else None
+        # One-hot encode 'seventeen' (vacation months)
+        seventeen_months = user_questionnaire.seventeen
+        seventeen_data = {
+            f"vacation_month_{m}": (1 if m in seventeen_months else 0)
+            for m in range(1, 13)
+        }
 
-        # Previous consumption
-        previous_consumption = await ElectricityConsumption.filter(
-            user_id=user_id, year=year, month=month
-        ).values_list("electricity_consumption", flat=True)
-        previous_consumption = (
-            previous_consumption[0] if previous_consumption else None
-        )
-
-        # Create input data for prediction
+        # Combine all features into a single dictionary
         input_data = pd.DataFrame(
             [
                 {
-                    "month": month_num,
-                    "nineteen": user_questionnaire.nineteen,
-                    "zip_avg": zip_avg,
-                    "nineteen_avg": nineteen_avg,
-                    "prev_consumption": previous_consumption,
+                    "year": int(year),
+                    "pin_code": user_data["pin_code"],
                     **questionnaire_data,
+                    **month_data,
+                    **nineteen_data,
+                    **seventeen_data,
                 }
             ]
-        )
-
-        # Add interaction features
-        input_data["month_zip_interaction"] = (
-            input_data["month"] * input_data["zip_avg"]
-        )
-        input_data["month_nineteen_interaction"] = (
-            input_data["month"] * input_data["nineteen_avg"]
-        )
-        input_data["zip_trend_nineteen_trend_interaction"] = (
-            input_data["zip_avg"] * input_data["nineteen_avg"]
-        )
-        input_data["prev_consumption_month_interaction"] = (
-            input_data["prev_consumption"] * input_data["month"]
-        )
-
-        # One-hot encode 'nineteen'
-        input_data = pd.get_dummies(
-            input_data, columns=["nineteen"], drop_first=True
         )
 
         # Align input data with saved feature names
         with open(features_path, "r") as f:
             all_features = json.load(f)
         input_data = input_data.reindex(columns=all_features, fill_value=0)
+
+        # Ensure all input features are numeric and float
+        input_data = input_data.apply(pd.to_numeric, errors="coerce")
+        input_data = input_data.fillna(0)  # Replace NaN with 0
+        input_data = input_data.astype(
+            "float32"
+        )  # Convert all columns to float32
 
         # Convert to PyTorch tensor
         input_tensor = torch.tensor(input_data.values, dtype=torch.float32).to(
@@ -152,17 +147,17 @@ async def predict_consumption(month, year, payload: dict):
         with torch.no_grad():
             predicted_consumption = model(input_tensor).cpu().numpy()[0][0]
 
-        # Calculate locality projection
-        locality_projection = nineteen_avg or zip_avg or 0  # Fallback logic
+        # Convert values to standard Python types for JSON serialization
+        predicted_consumption = float(
+            np.expm1(predicted_consumption)
+        )  # Revert log1p transformation
 
+        # Return the result with serialized types
         return {
             "user_id": user_id,
             "month": month,
             "year": year,
             "projected_consumption": round(predicted_consumption, 2),
-            "locality_projection": (
-                round(locality_projection, 2) if locality_projection else None
-            ),
         }
 
     except Exception as e:

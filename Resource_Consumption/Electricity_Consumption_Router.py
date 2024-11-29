@@ -9,7 +9,7 @@ from .Methods import (
     get_electricity_consumption,
 )
 from Utility_Methods.Utility_Methods import verify_jwt
-from Machine_Learning.Methods import update_averages_on_new_entry
+
 
 Electricity_Consumption_Router = APIRouter()
 
@@ -23,13 +23,6 @@ async def create_electricity_record(
         try:
             response = await create_electricity_consumption(
                 user_id=user_id, data=data
-            )
-
-            await update_averages_on_new_entry(
-                user_id=user_id,
-                year=data.year,
-                month=data.month,
-                new_consumption=data.consumption,
             )
 
         except Exception as e:
