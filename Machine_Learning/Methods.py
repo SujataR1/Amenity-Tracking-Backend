@@ -326,7 +326,7 @@ async def retrain_model():
                 weight_decay = trial.suggest_float(
                     "weight_decay", 1e-6, 1e-3, log=True
                 )
-                num_epochs = trial.suggest_int(
+                epochs = trial.suggest_int(
                     "epochs",
                     30,
                     100,
@@ -350,7 +350,7 @@ async def retrain_model():
                 model.to(device)
 
                 for epoch in range(
-                    num_epochs
+                    epochs
                 ):  # Optuna limits epochs for faster trials
                     model.train()
                     train_loss = 0.0
@@ -423,7 +423,7 @@ async def retrain_model():
 
                     # Print metrics
                     print(
-                        f"Trial {trial.number} - Epoch {epoch + 1}/{num_epochs}: "
+                        f"Trial {trial.number} - Epoch {epoch + 1}/{epochs}: "
                         f"Train Loss = {train_loss:.4f}, "
                         f"Validation Loss = {val_loss:.4f}, "
                         f"Train MAE = {train_mae:.4f}, "
@@ -465,7 +465,7 @@ async def retrain_model():
             final_model.to(device)
             final_model.train()
 
-            for epoch in range(best_params["num_epochs"]):  # Use more epochs for final training
+            for epoch in range(best_params["epochs"]):  # Use more epochs for final training
                 train_loss = 0.0
                 train_errors = []
                 correct_predictions = 0
