@@ -4,7 +4,6 @@ from .Methods import (
     predict_consumption,
 )  # Import the method
 from Utility_Methods.Utility_Methods import verify_jwt
-from os import path
 from decouple import config
 
 Projection_Router = APIRouter()

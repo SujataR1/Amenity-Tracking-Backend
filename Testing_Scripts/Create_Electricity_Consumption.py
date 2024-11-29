@@ -1,5 +1,3 @@
-import json
-import os
 import random
 import calendar  # For month name conversion
 from tortoise.transactions import in_transaction
