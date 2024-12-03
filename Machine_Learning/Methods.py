@@ -459,7 +459,7 @@ async def retrain_model(resource_type: str):
 
             # Run Optuna optimization
             study = optuna.create_study(direction="minimize")
-            study.optimize(objective, n_trials=15)
+            study.optimize(objective, n_trials=15, n_jobs=-1)
 
             # Save best parameters
             best_params = study.best_params
