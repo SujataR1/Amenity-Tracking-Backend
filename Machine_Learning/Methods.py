@@ -73,10 +73,12 @@ async def retrain_model(resource_type: str):
     """
 
     # Paths for model, scaler, and metadata
-    with open("Machine_Learning/Data_Schemas.json", "r") as file:
-        data_schemas = json.loads(file.read())
+    with open(
+        "Machine_Learning\Machine_Learning_Parameter_Schemas.json", "r"
+    ) as file:
+        machine_learning_parameter_schemas = json.loads(file.read())
 
-    config = data_schemas.get(resource_type)
+    config = machine_learning_parameter_schemas.get(resource_type)
     if not config:
         raise ValueError(
             f"Configuration for resource type '{resource_type}' not found."
