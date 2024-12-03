@@ -1,7 +1,9 @@
 from fastapi import APIRouter
 
 # Import the individual routers
-from .Electricity_Consumption_Router import Electricity_Consumption_Router
+from .Electricity_Consumption_Router import (
+    Electricity_Consumption_Router,
+)
 from .Gas_Consumption_Router import Gas_Consumption_Router
 from .Water_Consumption_Router import Water_Consumption_Router
 from .Fuel_Consumption_Router import Fuel_Consumption_Router

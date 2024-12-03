@@ -36,7 +36,9 @@ middlewares = [
 ]
 
 app = FastAPI(
-    title="Amenity Tracking API", lifespan=lifespan, middleware=middlewares
+    title="Amenity Tracking API",
+    lifespan=lifespan,
+    middleware=middlewares,
 )
 
 

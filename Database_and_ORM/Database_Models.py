@@ -146,10 +146,12 @@ class Admin(Model):
     )
     two_fa_status = fields.BooleanField(default=False)
     created_at = fields.DatetimeField(
-        auto_now_add=True, description="Timestamp when the admin was created"
+        auto_now_add=True,
+        description="Timestamp when the admin was created",
     )
     updated_at = fields.DatetimeField(
-        auto_now=True, description="Timestamp when the admin was last updated"
+        auto_now=True,
+        description="Timestamp when the admin was last updated",
     )
 
     class Meta:

@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
-from .Data_Schemas import CreateConsumption, UpdateConsumption, GetConsumption
+from .Data_Schemas import (
+    CreateConsumption,
+    UpdateConsumption,
+    GetConsumption,
+)
 from .Methods import (
     create_water_consumption,
     update_water_consumption,

@@ -4,7 +4,6 @@ from .Methods import (
     predict_consumption,
 )  # Import the method
 from Utility_Methods.Utility_Methods import verify_jwt
-from os import path
 from decouple import config
 
 Projection_Router = APIRouter()
@@ -21,6 +20,7 @@ async def predict_consumption_api(
     """
     try:
         result = await predict_consumption(
+            resource_type=request.resource_type,
             month=request.month,
             year=request.year,
             payload=payload,

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Optional
-from datetime import datetime
-from .Data_Schemas import CreateConsumption, UpdateConsumption, GetConsumption
+from .Data_Schemas import (
+    CreateConsumption,
+    UpdateConsumption,
+    GetConsumption,
+)
 from .Methods import (
     create_electricity_consumption,
     # update_electricity_consumption,

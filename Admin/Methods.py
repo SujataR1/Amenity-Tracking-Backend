@@ -206,11 +206,16 @@ async def upload_admin_profile_picture(
     """
     admin_id = payload.get("user_id")
     directory = os.path.join(
-        config("ADMIN_MEDIA_PATH"), config("ADMIN_PROFILE_PICTURES_DIRECTORY")
+        config("ADMIN_MEDIA_PATH"),
+        config("ADMIN_PROFILE_PICTURES_DIRECTORY"),
     )
     os.makedirs(directory, exist_ok=True)
 
-    if file.content_type not in ["image/jpeg", "image/png", "image/jpg"]:
+    if file.content_type not in [
+        "image/jpeg",
+        "image/png",
+        "image/jpg",
+    ]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only JPEG and PNG images are allowed.",

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from typing import Dict
 from tortoise.exceptions import DoesNotExist
 from Questionnaire.Methods import (
     create_questionnaire_answers,
@@ -26,7 +25,8 @@ async def get_questionnaire_endpoint():
 
 @Questionnaire_Router.post("/answer", status_code=status.HTTP_201_CREATED)
 async def create_questionnaire_answer_endpoint(
-    answer_data: QuestionnaireAnswerCreate, payload: dict = Depends(verify_jwt)
+    answer_data: QuestionnaireAnswerCreate,
+    payload: dict = Depends(verify_jwt),
 ):
     """
     Submit all 18 answers to the questionnaire for a user.
@@ -48,7 +48,8 @@ async def create_questionnaire_answer_endpoint(
 
 @Questionnaire_Router.patch("/answer", status_code=status.HTTP_200_OK)
 async def update_questionnaire_answer_endpoint(
-    answer_data: QuestionnaireAnswerUpdate, payload: dict = Depends(verify_jwt)
+    answer_data: QuestionnaireAnswerUpdate,
+    payload: dict = Depends(verify_jwt),
 ):
     """
     Update answers to the questionnaire for a user.

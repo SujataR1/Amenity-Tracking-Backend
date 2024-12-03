@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from tortoise.exceptions import DoesNotExist, IntegrityError
-from typing import List, Union, Optional
+from typing import List, Union
 from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
     GasConsumption,
