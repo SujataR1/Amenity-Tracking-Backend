@@ -308,10 +308,14 @@ async def retrain_model(resource_type: str):
             user_id_tensor = torch.tensor(
                 final_data["user_id"].values, dtype=torch.long
             ).to(device)
-            feature_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
-            target_tensor = torch.tensor(y.values, dtype=torch.float32).view(
-                -1, 1
-            ).to(device)
+            feature_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(
+                device
+            )
+            target_tensor = (
+                torch.tensor(y.values, dtype=torch.float32)
+                .view(-1, 1)
+                .to(device)
+            )
 
             dataset = TensorDataset(
                 user_id_tensor, feature_tensor, target_tensor
@@ -422,7 +426,7 @@ async def retrain_model(resource_type: str):
                                 targets.to(device),
                             )
                             outputs = model(user_ids, features)
-                            loss = criterion(outputs, targets)
+                            loss = criterion(outputs, targets.to(device))
                             val_loss += loss.item()
 
                             # Track validation errors and accuracy
@@ -504,7 +508,7 @@ async def retrain_model(resource_type: str):
                     )
                     optimizer.zero_grad()
                     outputs = final_model(user_ids, features)
-                    loss = criterion(outputs, targets)
+                    loss = criterion(outputs, targets.to(device))
                     loss.backward()
                     optimizer.step()
                     train_loss += loss.item()
