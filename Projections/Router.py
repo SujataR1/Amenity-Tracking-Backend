@@ -20,6 +20,7 @@ async def predict_consumption_api(
     """
     try:
         result = await predict_consumption(
+            resource_type=request.resource_type,
             month=request.month,
             year=request.year,
             payload=payload,
