@@ -4,7 +4,7 @@ from tortoise.transactions import in_transaction
 from Database_and_ORM.Database_Models import (
     User,
     QuestionnaireAnswers,
-    ElectricityConsumption,
+    WaterConsumption,
 )
 from Database_and_ORM.Database_Connector import init_db, close_db
 
@@ -23,56 +23,34 @@ def adjust_for_vacations(monthly_consumptions, vacation_month, vacation_days):
     return monthly_consumptions
 
 
-# Generate electricity consumption based on questionnaire and weather
+# Generate water consumption based on questionnaire and household factors
 def generate_monthly_consumption(answers):
-    # Extract climate (nineteen) from the answers
-    weather = answers["nineteen"]
-
-    # Base consumption influenced by weather and household size
-    base_consumption = 150  # Starting point for single, 1BHK user
-    base_consumption += answers["one"] * 50  # Adjust for number of people
-    base_consumption += answers["three"] * 20  # Adjust for number of bedrooms
-    if weather == "Hot":
-        base_consumption += 100 if answers["four"] else 50  # Air conditioning
-    elif weather == "Cold":
-        base_consumption += 80 if answers["thirteen"] else 40  # Room heaters
-    elif weather == "Humid":
-        base_consumption += 70 if answers["four"] else 30  # Air conditioning
-    elif weather == "Dry":
-        base_consumption += 30  # Lower adjustment for dry climates
+    # Base consumption influenced by household size and activities
+    base_consumption = (
+        300  # Starting point for a single-person household per month
+    )
+    base_consumption += answers["one"] * 100  # Adjust for number of people
+    base_consumption += answers["three"] * 50  # Adjust for number of bathrooms
 
     # Appliance usage impact
     if answers["seven"]:  # Washing machine
-        base_consumption += 30
+        base_consumption += 50
     if answers["eight"]:  # Dishwasher
-        base_consumption += 25
-    if answers["six"]:  # Electric iron
-        base_consumption += 10
-    if answers["ten"]:  # Microwave
-        base_consumption += 15
+        base_consumption += 30
 
     # Generate monthly consumption with variances
     monthly_consumptions = []
     for month in range(1, 13):
         monthly_variance = (
-            random.uniform(-0.2, 0.2) * base_consumption
-        )  # ±20% variance
+            random.uniform(-0.1, 0.1) * base_consumption
+        )  # ±10% variance
         consumption = base_consumption + monthly_variance
 
         # Add outliers (5% chance)
         if random.random() < 0.05:
             consumption *= min(
-                random.uniform(1.5, 2.5), 2.0
-            )  # Cap spike multiplier at 2.0
-
-        # Adjust for seasonality
-        if month in [1, 2, 12] and weather in [
-            "Cold",
-            "Humid",
-        ]:  # Winter months
-            consumption *= 1.2
-        elif month in [6, 7, 8] and weather == "Hot":  # Summer months
-            consumption *= 1.3
+                random.uniform(1.3, 2.0), 1.8
+            )  # Cap spike multiplier at 1.8
 
         monthly_consumptions.append(round(consumption, 2))
 
@@ -98,18 +76,18 @@ async def save_consumption_to_db(
                 ]  # Convert month number to name
 
                 # Check if the record already exists to avoid duplicates
-                existing_record = await ElectricityConsumption.get_or_none(
+                existing_record = await WaterConsumption.get_or_none(
                     user_id=user_id, year=year, month=month_name
                 )
                 if not existing_record:
-                    await ElectricityConsumption.create(
+                    await WaterConsumption.create(
                         user_id=user_id,
                         year=year,
                         month=month_name,
-                        electricity_consumption=consumption,
+                        water_consumption=consumption,
                     )
                     print(
-                        f"Saved consumption for {user_email} {year}-{month_name}: {consumption} kWh"
+                        f"Saved consumption for {user_email} {year}-{month_name}: {consumption} liters"
                     )
                 else:
                     print(
