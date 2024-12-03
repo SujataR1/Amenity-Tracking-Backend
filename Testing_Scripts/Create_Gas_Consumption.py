@@ -15,7 +15,7 @@ BATCH_SIZE = 100
 # Generate gas consumption based on household size and usage
 def generate_monthly_consumption(answers):
     # Base consumption influenced by household size
-    base_consumption = 32  # Starting point (kg per month)
+    base_consumption = 5  # Starting point (kg per month)
     base_consumption += answers["one"] * 5  # Adjust for number of people
 
     # Adjust for daily cooking

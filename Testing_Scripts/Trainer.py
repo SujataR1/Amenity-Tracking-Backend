@@ -2,12 +2,8 @@ import asyncio
 from Machine_Learning.Methods import retrain_model
 from Database_and_ORM.Database_Connector import init_db, close_db
 
-RESOURCE_TYPES = {
-    1: "Electricity",
-    2: "Gas",
-    3: "Water",
-    4: "Fuel"
-}
+RESOURCE_TYPES = {1: "Electricity", 2: "Gas", 3: "Water", 4: "Fuel"}
+
 
 def get_resource_type():
     """
@@ -19,7 +15,7 @@ def get_resource_type():
     print("Select the resource type to retrain:")
     for key, value in RESOURCE_TYPES.items():
         print(f"{key}. {value}")
-    
+
     while True:
         try:
             choice = int(input("Enter your choice (1-4): "))
@@ -29,6 +25,7 @@ def get_resource_type():
                 print("Invalid choice. Please enter a number between 1 and 4.")
         except ValueError:
             print("Invalid input. Please enter a valid number.")
+
 
 async def manual_retrain():
     """
@@ -48,7 +45,9 @@ async def manual_retrain():
             f"Model retraining for {resource_type} completed successfully. Model saved at: {model_path}"
         )
     except Exception as e:
-        print(f"Error occurred during model retraining for {resource_type}: {e}")
+        print(
+            f"Error occurred during model retraining for {resource_type}: {e}"
+        )
     finally:
         # Close the database connection
         await close_db()
