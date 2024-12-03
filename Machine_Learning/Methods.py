@@ -17,6 +17,9 @@ from tortoise.transactions import in_transaction
 from tortoise.functions import Avg
 from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
+    WaterConsumption,
+    FuelConsumption,
+    GasConsumption,
     QuestionnaireAnswers,
     User,
 )
@@ -25,7 +28,7 @@ from decouple import config
 cudnn.benchmark = True  # Optimize GPU kernel selection for CUDA
 
 
-class ElectricityConsumptionModel(nn.Module):
+class ConsumptionModel(nn.Module):
     def __init__(
         self,
         num_users,
@@ -35,7 +38,7 @@ class ElectricityConsumptionModel(nn.Module):
         embedding_dim=50,
         dropout_rate=0.2,
     ):
-        super(ElectricityConsumptionModel, self).__init__()
+        super(ConsumptionModel, self).__init__()
         # Embedding layer for user_id
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
 
@@ -62,7 +65,7 @@ class ElectricityConsumptionModel(nn.Module):
         return x
 
 
-async def retrain_model():
+async def retrain_model(resource_type: str):
     """
     Retrains the electricity consumption prediction model using PyTorch
     and Optuna for hyperparameter tuning. Includes user_id embeddings,
@@ -70,18 +73,36 @@ async def retrain_model():
     """
 
     # Paths for model, scaler, and metadata
-    model_dir = config("ELECTRICITY_CONSUMPTION_MODEL_PATH")
-    model_path = path.join(model_dir, f"Electricity_Consumption_Model.pt")
-    scaler_path = path.join(model_dir, f"Scaler.pkl")
-    features_path = path.join(
-        model_dir, f"Electricity_Consumption_Model_Features.json"
+    with open("Machine_Learning/Data_Schemas.json", "r") as file:
+        data_schemas = json.loads(file.read())
+
+    config = data_schemas.get(resource_type)
+    if not config:
+        raise ValueError(
+            f"Configuration for resource type '{resource_type}' not found."
+        )
+
+    # Paths for model, scaler, and metadata
+    model_dir = config["Directory_Path"]
+    model_path = path.join(model_dir, config["Trained_Model_Name"])
+    scaler_path = path.join(model_dir, config["Scaler_File_Name"])
+    features_path = path.join(model_dir, config["Features_File_Name"])
+    user_id_mapping_path = path.join(
+        model_dir, config["User_ID_Mapping_File_Name"]
     )
-    user_id_mapping_path = path.join(model_dir, "User_ID_Mapping.pkl")
-    pin_code_mapping_path = path.join(model_dir, "Pin_Code_Mapping.pkl")
-    hyperparam_config_path = path.join(model_dir, f"ML_Config.json")
+    pin_code_mapping_path = path.join(
+        model_dir, config["PIN_Code_Mapping_Path"]
+    )
+    hyperparam_config_path = path.join(
+        model_dir, config["Hyperparameter_Configuration_File_Name"]
+    )
     status_json_path = path.join(
-        model_dir, f"Electricity_Consumption_Model_Training_Status.json"
+        model_dir, config["Model_Training_Status_File_Name"]
     )
+
+    # Database and column details
+    database_name = config["Database_Name"]
+    target_column = config["Column_Name"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -102,18 +123,14 @@ async def retrain_model():
     try:
         while mae > 2 and (time() - start_time) < max_duration:
             iteration += 1
-            print(f"Retraining iteration {iteration}...")
+            print(f"Retraining iteration {iteration} for {resource_type}...")
 
             # Fetch and preprocess data
             offset = 0
             batch_size = 25
             merged_data = []
-            pin_code_mapping = (
-                {}
-            )  # Dictionary to store categorical mapping for PIN codes
-            pin_code_counter = (
-                0  # Counter to assign unique categories for PIN codes
-            )
+            pin_code_mapping = {}
+            pin_code_counter = 0
 
             while True:
                 users_batch = (
@@ -126,13 +143,15 @@ async def retrain_model():
                     break
 
                 user_ids = [user["id"] for user in users_batch]
-                consumption_batch = await ElectricityConsumption.filter(
-                    user_id__in=user_ids
-                ).values(
-                    "user_id",
-                    "year",
-                    "month",
-                    "electricity_consumption",
+                consumption_batch = (
+                    await globals()[database_name]
+                    .filter(user_id__in=user_ids)
+                    .values(
+                        "user_id",
+                        "year",
+                        "month",
+                        target_column,
+                    )
                 )
                 questionnaire_batch = await QuestionnaireAnswers.filter(
                     user_id__in=user_ids
@@ -194,18 +213,19 @@ async def retrain_model():
             if merged_data:
                 final_data = pd.concat(merged_data, ignore_index=True)
             else:
-                raise ValueError("No data available for training.")
+                raise ValueError(
+                    f"No data available for training {resource_type}."
+                )
 
             # Handle missing data
             final_data.fillna(0, inplace=True)
-            print(f"Final data shape: {final_data.shape}")
+            print(f"Final data shape: {final_data.shape} for {resource_type}")
 
             # Winsorize outliers
-            consumption_column = "electricity_consumption"
-            lower_limit = final_data[consumption_column].quantile(0.01)
-            upper_limit = final_data[consumption_column].quantile(0.99)
-            final_data[consumption_column] = np.clip(
-                final_data[consumption_column], lower_limit, upper_limit
+            lower_limit = final_data[target_column].quantile(0.01)
+            upper_limit = final_data[target_column].quantile(0.99)
+            final_data[target_column] = np.clip(
+                final_data[target_column], lower_limit, upper_limit
             )
 
             # Encode categorical features
@@ -260,7 +280,7 @@ async def retrain_model():
             ]
 
             X = final_data[feature_names]
-            y = final_data["electricity_consumption"]
+            y = final_data[target_column]
 
             # Align features
             if path.exists(features_path):
@@ -333,7 +353,7 @@ async def retrain_model():
                     step=5,  # Tune number of epochs between 10 and 50
                 )
 
-                model = ElectricityConsumptionModel(
+                model = ConsumptionModel(
                     num_users=len(user_id_mapping),
                     input_dim=len(feature_names),
                     hidden_dim1=hidden_dim1,
@@ -437,7 +457,7 @@ async def retrain_model():
 
             # Run Optuna optimization
             study = optuna.create_study(direction="minimize")
-            study.optimize(objective, n_trials=1)
+            study.optimize(objective, n_trials=15)
 
             # Save best parameters
             best_params = study.best_params
@@ -446,7 +466,7 @@ async def retrain_model():
                 json.dump(best_params, f, indent=4)
 
             # Train final model
-            final_model = ElectricityConsumptionModel(
+            final_model = ConsumptionModel(
                 num_users=len(user_id_mapping),
                 input_dim=len(feature_names),
                 hidden_dim1=best_params["hidden_dim1"],
