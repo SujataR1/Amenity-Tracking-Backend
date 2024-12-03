@@ -20,7 +20,7 @@ def generate_monthly_consumption(answers):
 
     # Adjust for daily cooking
     if answers["twelve"]:  # Daily heavy cooking
-        base_consumption += 10
+        base_consumption += 8
 
     # Generate monthly consumption with variances
     monthly_consumptions = []
