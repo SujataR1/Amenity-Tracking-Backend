@@ -120,7 +120,7 @@ async def retrain_model(resource_type: str):
     # Ensure GPU memory usage is limited
     if torch.cuda.is_available():
         total_memory = torch.cuda.get_device_properties(0).total_memory
-        torch.cuda.set_per_process_memory_fraction(1.0, 0)
+        torch.cuda.set_per_process_memory_fraction(0.75, 0)
 
     try:
         while mae > 2 and (time() - start_time) < max_duration:
@@ -307,11 +307,11 @@ async def retrain_model(resource_type: str):
             # Convert to PyTorch tensors
             user_id_tensor = torch.tensor(
                 final_data["user_id"].values, dtype=torch.long
-            )
-            feature_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+            ).to(device)
+            feature_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
             target_tensor = torch.tensor(y.values, dtype=torch.float32).view(
                 -1, 1
-            )
+            ).to(device)
 
             dataset = TensorDataset(
                 user_id_tensor, feature_tensor, target_tensor
@@ -362,7 +362,7 @@ async def retrain_model(resource_type: str):
                     hidden_dim2=hidden_dim2,
                     embedding_dim=embedding_dim,
                     dropout_rate=dropout_rate,
-                )
+                ).to(device)
                 optimizer = optim.Adam(
                     model.parameters(),
                     lr=learning_rate,
@@ -475,7 +475,7 @@ async def retrain_model(resource_type: str):
                 hidden_dim2=best_params["hidden_dim2"],
                 embedding_dim=best_params["embedding_dim"],
                 dropout_rate=best_params["dropout_rate"],
-            )
+            ).to(device)
 
             criterion = nn.L1Loss()
 
