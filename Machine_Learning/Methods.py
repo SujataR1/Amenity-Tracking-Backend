@@ -120,7 +120,7 @@ async def retrain_model(resource_type: str):
     # Ensure GPU memory usage is limited
     if torch.cuda.is_available():
         total_memory = torch.cuda.get_device_properties(0).total_memory
-        torch.cuda.set_per_process_memory_fraction(0.75, 0)
+        torch.cuda.set_per_process_memory_fraction(1.0, 0)
 
     try:
         while mae > 2 and (time() - start_time) < max_duration:
