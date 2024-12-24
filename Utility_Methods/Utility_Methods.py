@@ -12,6 +12,9 @@ import os
 from typing import Union, Dict
 from mimetypes import guess_type
 from typing import Optional
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 
 
 async def get_token_from_authorization_header_value(
@@ -28,6 +31,58 @@ async def decode_jwt(token):
     return payload
 
 
+async def encrypt_jwt(jwt_token: str) -> str:
+    """
+    Encrypts a JWT token using AES encryption.
+    """
+    SECRET_KEY = config("SYMMETRIC_ENCRYPTION_KEY").encode()[:32]
+    iv = iv = os.urandom(16)
+    cipher = Cipher(
+        algorithms.AES(SECRET_KEY), modes.CBC(iv), backend=default_backend()
+    )
+    encryptor = cipher.encryptor()
+
+    # Add padding to the JWT token to make it AES-block compatible
+    padder = padding.PKCS7(algorithms.AES.block_size).padder()
+    padded_data = padder.update(jwt_token.encode()) + padder.finalize()
+
+    # Encrypt the padded data
+    encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
+
+    # Encode the encrypted data and IV as Base64 for safe transport
+    return base64.b64encode(iv + encrypted_data).decode("utf-8")
+
+
+async def decrypt_jwt(encrypted_jwt: str) -> str:
+    """
+    Decrypts an encrypted JWT token using AES decryption.
+    """
+    # Decode the encrypted data from Base64
+    SECRET_KEY = config("SYMMETRIC_ENCRYPTION_KEY").encode()[:32]
+    encrypted_data = base64.b64decode(encrypted_jwt)
+
+    # Extract the IV and the actual encrypted message
+    iv = encrypted_data[:16]  # First 16 bytes are the IV
+    ciphertext = encrypted_data[16:]
+
+    # Set up the AES decryption
+    cipher = Cipher(
+        algorithms.AES(SECRET_KEY), modes.CBC(iv), backend=default_backend()
+    )
+    decryptor = cipher.decryptor()
+
+    # Decrypt the ciphertext
+    decrypted_padded_data = decryptor.update(ciphertext) + decryptor.finalize()
+
+    # Remove padding from the decrypted data
+    unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+    decrypted_data = (
+        unpadder.update(decrypted_padded_data) + unpadder.finalize()
+    )
+
+    return decrypted_data.decode("utf-8")
+
+
 async def verify_jwt(authorization: str = Header(None)):
     """
     Dependency that verifies the JWT token and checks if it's blacklisted.
@@ -40,7 +95,8 @@ async def verify_jwt(authorization: str = Header(None)):
 
     try:
         token = await get_token_from_authorization_header_value(authorization)
-        payload = await decode_jwt(token)
+        decrypted_token = await decrypt_jwt(token)
+        payload = await decode_jwt(decrypted_token)
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -80,7 +136,8 @@ async def create_jwt(user_id: str, expiration_duration: int) -> str:
         + timedelta(minutes=expiration_duration),  # Token valid for 1 day
     }
     token = jwt.encode(payload, config("JWT_SECRET_STRING"), algorithm="HS256")
-    return token
+    encrypted_token = await encrypt_jwt(token)
+    return encrypted_token
 
 
 async def verify_otp(

@@ -6,10 +6,12 @@ anyio==4.6.2.post1
 bcrypt==4.2.0
 black==24.10.0
 certifi==2024.8.30
+cffi==1.17.1
 charset-normalizer==3.4.0
 click==8.1.7
 colorama==0.4.6
 colorlog==6.9.0
+cryptography==44.0.0
 dnspython==2.7.0
 email_validator==2.2.0
 fastapi==0.115.4
@@ -49,6 +51,7 @@ platformdirs==4.3.6
 pyaml==24.9.0
 pycln==2.4.0
 pycodestyle==2.12.1
+pycparser==2.22
 pydantic==2.9.2
 pydantic-extra-types==2.10.0
 pydantic-settings==2.6.1
@@ -77,9 +80,6 @@ starlette==0.41.2
 sympy==1.13.1
 threadpoolctl==3.5.0
 tomlkit==0.13.2
-torch==2.5.1+cu118
-torchaudio==2.5.1+cu118
-torchvision==0.20.1+cu118
 tortoise-orm==0.21.7
 tqdm==4.67.1
 typer==0.13.0
