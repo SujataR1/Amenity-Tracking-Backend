@@ -120,7 +120,7 @@ async def verify_jwt(authorization: str = Header(None)):
 
 async def generate_random_otp() -> str:
     """Generates a random OTP of specified length."""
-    return str(uuid.uuid4())[: int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS"))]
+    return str(uuid.uuid4())[: int(config("OTP_DIGITS"))]
 
 
 async def create_jwt(user_id: str, expiration_duration: int) -> str:
