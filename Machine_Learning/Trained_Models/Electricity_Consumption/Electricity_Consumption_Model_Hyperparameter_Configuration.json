@@ -1,0 +1,9 @@
+{
+    "learning_rate": 5.044951465330618e-05,
+    "hidden_dim1": 64,
+    "hidden_dim2": 96,
+    "embedding_dim": 100,
+    "dropout_rate": 0.2,
+    "weight_decay": 0.00036733174136021295,
+    "epochs": 65
+}
