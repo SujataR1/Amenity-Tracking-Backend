@@ -44,7 +44,6 @@ pandas==2.2.3
 passlib==1.7.4
 pathspec==0.12.1
 pillow==11.0.0
-pip-check-reqs==2.5.3
 platformdirs==4.3.6
 pyaml==24.9.0
 pycln==2.4.0
@@ -77,9 +76,9 @@ starlette==0.41.2
 sympy==1.13.1
 threadpoolctl==3.5.0
 tomlkit==0.13.2
-torch==2.5.1+cu118
-torchaudio==2.5.1+cu118
-torchvision==0.20.1+cu118
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
 tortoise-orm==0.21.7
 tqdm==4.67.1
 typer==0.13.0
