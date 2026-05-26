@@ -1,50 +1,34 @@
 {
-    "Electricity": {
-        "Directory_Path":"Machine_Learning/Trained_Models/Electricity_Consumption",
-        "Database_Name":"ElectricityConsumption",
-        "Column_Name":"electricity_consumption",
-        "Trained_Model_Name":"Electricity_Consumption_Model.pt",
-        "Scaler_File_Name":"Electricity_Consumption_Model_Scaler.pkl",
-        "Features_File_Name":"Electricity_Consumption_Model_Features.json",
-        "Hyperparameter_Configuration_File_Name":"Electricity_Consumption_Model_Hyperparameter_Configuration.json",
-        "User_ID_Mapping_File_Name":"Electricity_Consumption_Model_User_ID_Mapping.pkl",
-        "PIN_Code_Mapping_Path":"Electricity_Consumption_Model_PIN_Code_Mapping.pkl",
-        "Model_Training_Status_File_Name":"Electricity_Consumption_Model_Training_Status.json"
-    },
-    "Gas": {
-        "Directory_Path":"Machine_Learning/Trained_Models/Gas_Consumption",
-        "Database_Name":"GasConsumption",
-        "Column_Name":"gas_consumption",
-        "Trained_Model_Name":"Gas_Consumption_Model.pt",
-        "Scaler_File_Name":"Gas_Consumption_Model_Scaler.pkl",
-        "Features_File_Name":"Gas_Consumption_Model_Features.json",
-        "Hyperparameter_Configuration_File_Name":"Gas_Consumption_Model_Hyperparameter_Configuration.json",
-        "User_ID_Mapping_File_Name":"Gas_Consumption_Model_User_ID_Mapping.pkl",
-        "PIN_Code_Mapping_Path":"Gas_Consumption_Model_PIN_Code_Mapping.pkl",
-        "Model_Training_Status_File_Name":"Gas_Consumption_Model_Training_Status.json"
-    },
-    "Water": {
-        "Directory_Path":"Machine_Learning/Trained_Models/Water_Consumption",
-        "Database_Name":"WaterConsumption",
-        "Column_Name":"water_consumption",
-        "Trained_Model_Name":"Water_Consumption_Model.pt",
-        "Scaler_File_Name":"Water_Consumption_Model_Scaler.pkl",
-        "Features_File_Name":"Water_Consumption_Model_Features.json",
-        "Hyperparameter_Configuration_File_Name":"Water_Consumption_Model_Hyperparameter_Configuration.json",
-        "User_ID_Mapping_File_Name":"Water_Consumption_Model_User_ID_Mapping.pkl",
-        "PIN_Code_Mapping_Path":"Water_Consumption_Model_PIN_Code_Mapping.pkl",
-        "Model_Training_Status_File_Name":"Water_Consumption_Model_Training_Status.json"
-    },
-    "Fuel": {
-        "Directory_Path":"Machine_Learning/Trained_Models/Fuel_Consumption",
-        "Database_Name":"FuelConsumption",
-        "Column_Name":"fuel_consumption",
-        "Trained_Model_Name":"Fuel_Consumption_Model.pt",
-        "Scaler_File_Name":"Fuel_Consumption_Model_Scaler.pkl",
-        "Features_File_Name":"Fuel_Consumption_Model_Features.json",
-        "Hyperparameter_Configuration_File_Name":"Fuel_Consumption_Model_Hyperparameter_Configuration.json",
-        "User_ID_Mapping_File_Name":"Fuel_Consumption_Model_User_ID_Mapping.pkl",
-        "PIN_Code_Mapping_Path":"Fuel_Consumption_Model_PIN_Code_Mapping.pkl",
-        "Model_Training_Status_File_Name":"Fuel_Consumption_Model_Training_Status.json"
-    }
+  "Electricity": {
+    "Directory_Path": "Machine_Learning/Trained_Models/Electricity_Consumption",
+    "Database_Name": "ElectricityConsumption",
+    "Column_Name": "electricity_consumption",
+    "Trained_Model_Name": "Electricity_Consumption_Model.pkl",
+    "Scaler_File_Name": "Electricity_Consumption_Model_Scaler.pkl",
+    "Features_File_Name": "Electricity_Consumption_Model_Features.json"
+  },
+  "Gas": {
+    "Directory_Path": "Machine_Learning/Trained_Models/Gas_Consumption",
+    "Database_Name": "GasConsumption",
+    "Column_Name": "gas_consumption",
+    "Trained_Model_Name": "Gas_Consumption_Model.pkl",
+    "Scaler_File_Name": "Gas_Consumption_Model_Scaler.pkl",
+    "Features_File_Name": "Gas_Consumption_Model_Features.json"
+  },
+  "Water": {
+    "Directory_Path": "Machine_Learning/Trained_Models/Water_Consumption",
+    "Database_Name": "WaterConsumption",
+    "Column_Name": "water_consumption",
+    "Trained_Model_Name": "Water_Consumption_Model.pkl",
+    "Scaler_File_Name": "Water_Consumption_Model_Scaler.pkl",
+    "Features_File_Name": "Water_Consumption_Model_Features.json"
+  },
+  "Fuel": {
+    "Directory_Path": "Machine_Learning/Trained_Models/Fuel_Consumption",
+    "Database_Name": "FuelConsumption",
+    "Column_Name": "fuel_consumption",
+    "Trained_Model_Name": "Fuel_Consumption_Model.pkl",
+    "Scaler_File_Name": "Fuel_Consumption_Model_Scaler.pkl",
+    "Features_File_Name": "Fuel_Consumption_Model_Features.json"
+  }
 }
