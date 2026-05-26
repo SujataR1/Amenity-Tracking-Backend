@@ -13,15 +13,28 @@ def validate_pan(value: str):
 
 
 async def init_db():
-    try:
-        await Tortoise.init(
-            db_url=f"{config('DATABASE_URL')}",
-            modules={"models": ["Database_and_ORM.Database_Models"]},
-        )
-        await Tortoise.generate_schemas(safe=True)
-    except DBConnectionError as e:
-        print("Database connection error:", e)
-
-
+    await Tortoise.init(
+        config={
+            "connections": {
+                "default": {
+                    "engine": "tortoise.backends.mysql",
+                    "credentials": {
+                        "host": config("DB_HOST"),
+                        "port": int(config("DB_PORT")),
+                        "user": config("DB_USER"),
+                        "password": config("DB_PASSWORD"),
+                        "database": config("DB_NAME"),
+                        "ssl": {},   # required for Aiven
+                    },
+                }
+            },
+            "apps": {
+                "models": {
+                    "models": ["Database_and_ORM.Database_Models"],
+                    "default_connection": "default",
+                }
+            },
+        }
+    )
 async def close_db():
     await Tortoise.close_connections()

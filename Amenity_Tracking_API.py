@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware import Middleware
 from Methods import VerifyAPIKeyMiddleware, APIActivityLoggingMiddleware
 from contextlib import asynccontextmanager
-
+from Machine_Learning.Router import router as ML_Router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +55,7 @@ routers = [
     (Admin_Router, "/admin", ["Admin"]),
     (Consumption_Router, "/consumption", ["Consumption"]),
     (Projection_Router, "/projection", ["Projection"]),
+        (ML_Router, "/ml", ["Machine Learning"]),  
 ]
 
 for router, prefix, tags in routers:
