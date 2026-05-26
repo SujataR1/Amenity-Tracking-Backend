@@ -1,5 +1,4 @@
 # Machine_Learning/feature_engineering.py
-
 import pandas as pd
 import numpy as np
 
@@ -8,17 +7,11 @@ import numpy as np
 # SAFE BOOLEAN CONVERSION
 # =========================================================
 def safe_bool(value):
-
     if pd.isna(value):
         return 0
 
     if isinstance(value, str):
-        return 1 if value.lower() in [
-            "true",
-            "1",
-            "yes",
-            "y",
-        ] else 0
+        return 1 if value.lower() in ["true", "1", "yes", "y"] else 0
 
     return int(bool(value))
 
@@ -27,7 +20,6 @@ def safe_bool(value):
 # SAFE CLIMATE ENCODING
 # =========================================================
 def encode_climate(value):
-
     climate_map = {
         "cold": 0,
         "moderate": 1,
@@ -44,176 +36,19 @@ def encode_climate(value):
 # CYCLICAL MONTH ENCODING
 # =========================================================
 def add_month_cyclical_features(df: pd.DataFrame):
+    df = df.copy()
 
     if "month" not in df.columns:
         df["month"] = 1
 
-    df["month_sin"] = np.sin(
-        2 * np.pi * df["month"] / 12
-    )
-
-    df["month_cos"] = np.cos(
-        2 * np.pi * df["month"] / 12
-    )
+    df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
+    df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
 
     return df
 
 
 # =========================================================
-# HISTORICAL FEATURE ENGINEERING
-# =========================================================
-def add_historical_features(
-    df: pd.DataFrame,
-    target_column: str = "electricity_consumption",
-):
-
-    df = df.copy()
-
-    # -----------------------------------------------------
-    # SORT DATA FOR TIME SERIES
-    # -----------------------------------------------------
-    sort_cols = []
-
-    if "user_id" in df.columns:
-        sort_cols.append("user_id")
-
-    if "year" in df.columns:
-        sort_cols.append("year")
-
-    if "month" in df.columns:
-        sort_cols.append("month")
-
-    if sort_cols:
-        df = df.sort_values(by=sort_cols)
-
-    # -----------------------------------------------------
-    # LAST MONTH CONSUMPTION
-    # -----------------------------------------------------
-    if (
-        "user_id" in df.columns
-        and target_column in df.columns
-    ):
-
-        df["last_month_consumption"] = (
-            df.groupby("user_id")[target_column]
-            .shift(1)
-        )
-
-    else:
-        df["last_month_consumption"] = 0
-
-    # -----------------------------------------------------
-    # AVG LAST 3 MONTHS
-    # -----------------------------------------------------
-    if (
-        "user_id" in df.columns
-        and target_column in df.columns
-    ):
-
-        df["avg_last_3_months"] = (
-            df.groupby("user_id")[target_column]
-            .transform(
-                lambda x: (
-                    x.shift(1)
-                    .rolling(3, min_periods=1)
-                    .mean()
-                )
-            )
-        )
-
-    else:
-        df["avg_last_3_months"] = 0
-
-    # -----------------------------------------------------
-    # AVG LAST 6 MONTHS
-    # -----------------------------------------------------
-    if (
-        "user_id" in df.columns
-        and target_column in df.columns
-    ):
-
-        df["avg_last_6_months"] = (
-            df.groupby("user_id")[target_column]
-            .transform(
-                lambda x: (
-                    x.shift(1)
-                    .rolling(6, min_periods=1)
-                    .mean()
-                )
-            )
-        )
-
-    else:
-        df["avg_last_6_months"] = 0
-
-    # -----------------------------------------------------
-    # GROWTH RATE
-    # -----------------------------------------------------
-    df["consumption_growth_rate"] = (
-        (
-            df.get(target_column, 0)
-            - df["last_month_consumption"]
-        )
-        /
-        (
-            df["last_month_consumption"]
-            .replace(0, 1)
-        )
-    )
-
-    # -----------------------------------------------------
-    # YEARLY AVERAGE
-    # -----------------------------------------------------
-    if (
-        "user_id" in df.columns
-        and target_column in df.columns
-    ):
-
-        df["yearly_avg_consumption"] = (
-            df.groupby("user_id")[target_column]
-            .transform("mean")
-        )
-
-    else:
-        df["yearly_avg_consumption"] = 0
-
-    # -----------------------------------------------------
-    # MAX HISTORICAL CONSUMPTION
-    # -----------------------------------------------------
-    if (
-        "user_id" in df.columns
-        and target_column in df.columns
-    ):
-
-        df["max_historical_consumption"] = (
-            df.groupby("user_id")[target_column]
-            .transform("max")
-        )
-
-    else:
-        df["max_historical_consumption"] = 0
-
-    # -----------------------------------------------------
-    # MIN HISTORICAL CONSUMPTION
-    # -----------------------------------------------------
-    if (
-        "user_id" in df.columns
-        and target_column in df.columns
-    ):
-
-        df["min_historical_consumption"] = (
-            df.groupby("user_id")[target_column]
-            .transform("min")
-        )
-
-    else:
-        df["min_historical_consumption"] = 0
-
-    return df
-
-
-# =========================================================
-# MAIN FEATURE ENGINEERING PIPELINE
+# MAIN FEATURE ENGINEERING PIPELINE (LEAKAGE SAFE)
 # =========================================================
 def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
@@ -223,33 +58,22 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     # BOOLEAN COLUMNS
     # =====================================================
     bool_cols = [
-        "four",
-        "five",
-        "six",
-        "seven",
-        "eight",
-        "nine",
-        "ten",
-        "eleven",
-        "twelve",
-        "thirteen",
-        "fifteen",
-        "sixteen",
+        "four", "five", "six", "seven", "eight",
+        "nine", "ten", "eleven", "twelve",
+        "thirteen", "fifteen", "sixteen"
     ]
 
     for col in bool_cols:
-
         if col in df.columns:
             df[col] = df[col].apply(safe_bool)
-
         else:
             df[col] = 0
 
     # =====================================================
-    # SAFE NUMERIC DEFAULTS
+    # NUMERIC COLUMNS
     # =====================================================
     numeric_defaults = {
-        "one": 0,
+        "one": 1,
         "two": 0,
         "three": 1,
         "fourteen": 0,
@@ -259,162 +83,99 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     }
 
     for col, default in numeric_defaults.items():
-
         if col not in df.columns:
             df[col] = default
 
-        df[col] = pd.to_numeric(
-            df[col],
-            errors="coerce",
-        ).fillna(default)
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(default)
 
     # =====================================================
     # CLIMATE ENCODING
     # =====================================================
     if "nineteen" in df.columns:
-
-        df["nineteen"] = df["nineteen"].apply(
-            encode_climate
-        )
-
+        df["nineteen"] = df["nineteen"].apply(encode_climate)
     else:
         df["nineteen"] = 1
 
     # =====================================================
-    # FEATURE 1: PEOPLE PER ROOM
+    # SAFE FEATURE ENGINEERING
     # =====================================================
-    df["people_per_room"] = (
-        df["one"]
-        /
-        df["three"].replace(0, 1)
-    )
 
-    # =====================================================
-    # FEATURE 2: CHILD RATIO
-    # =====================================================
-    df["children_ratio"] = (
-        df["two"]
-        /
-        df["one"].replace(0, 1)
-    )
+    # People density
+    df["people_per_room"] = df["one"] / df["three"].replace(0, 1)
 
-    # =====================================================
-    # FEATURE 3: VACATION FACTOR
-    # =====================================================
-    df["vacation_factor"] = (
-        df["eighteen"] * 0.1
-    )
+    # Children ratio
+    df["children_ratio"] = df["two"] / df["one"].replace(0, 1)
 
-    # =====================================================
-    # FEATURE 4: APPLIANCE SCORE
-    # =====================================================
+    # Vacation impact (simple scaling only)
+    df["vacation_factor"] = df["eighteen"] * 0.1
+
+    # Appliance usage score
     appliance_cols = [
-        "four",
-        "five",
-        "six",
-        "seven",
-        "eight",
-        "nine",
-        "ten",
-        "eleven",
-        "twelve",
-        "thirteen",
+        "four", "five", "six", "seven", "eight",
+        "nine", "ten", "eleven", "twelve", "thirteen"
     ]
 
-    df["appliance_score"] = 0
+    df["appliance_score"] = df[appliance_cols].sum(axis=1)
 
-    for col in appliance_cols:
-        df["appliance_score"] += df[col]
+    # Luxury score
+    df["luxury_score"] = df["fifteen"] + df["sixteen"]
 
-    # =====================================================
-    # FEATURE 5: LUXURY SCORE
-    # =====================================================
-    df["luxury_score"] = (
-        df["fifteen"]
-        + df["sixteen"]
-    )
+    # Area per person
+    df["area_per_person"] = df["fourteen"] / df["one"].replace(0, 1)
 
     # =====================================================
-    # FEATURE 6: HOME AREA PER PERSON
+    # SAFE INTERACTIONS (NO TARGET LEAKAGE)
     # =====================================================
-    df["area_per_person"] = (
-        df["fourteen"]
-        /
-        df["one"].replace(0, 1)
-    )
 
-    # =====================================================
-    # FEATURE 7: DENSITY APPLIANCE INTERACTION
-    # =====================================================
     df["density_appliance_interaction"] = (
-        df["people_per_room"]
-        *
-        df["appliance_score"]
+        df["people_per_room"] * df["appliance_score"]
     )
 
-    # =====================================================
-    # FEATURE 8: CLIMATE APPLIANCE INTERACTION
-    # =====================================================
     df["climate_appliance_interaction"] = (
-        df["nineteen"]
-        *
-        df["appliance_score"]
+        df["nineteen"] * df["appliance_score"]
     )
 
-    # =====================================================
-    # FEATURE 9: AREA APPLIANCE INTERACTION
-    # =====================================================
     df["area_appliance_interaction"] = (
-        df["fourteen"]
-        *
-        df["appliance_score"]
+        df["area_per_person"] * df["appliance_score"]
     )
 
     # =====================================================
-    # FEATURE 10: HIGH CONSUMPTION RISK SCORE
+    # SIMPLIFIED RISK SCORE (NO HARD WEIGHTS)
     # =====================================================
     df["high_consumption_risk"] = (
-        (
-            df["appliance_score"] * 2
-        )
-        +
-        (
-            df["luxury_score"] * 3
-        )
-        +
-        (
-            df["nineteen"]
-        )
-        +
-        (
-            df["people_per_room"]
-        )
+        df["appliance_score"] +
+        df["luxury_score"] +
+        df["nineteen"] +
+        df["people_per_room"]
     )
 
     # =====================================================
-    # CYCLICAL MONTH FEATURES
+    # CYCLICAL FEATURES
     # =====================================================
     df = add_month_cyclical_features(df)
 
     # =====================================================
-    # HISTORICAL FEATURES
+    # IMPORTANT FIX:
+    # REMOVE TARGET-BASED FEATURES (LEAKAGE FIX)
     # =====================================================
-    if "electricity_consumption" in df.columns:
+    leakage_cols = [
+        "consumption_growth_rate",
+        "last_month_consumption",
+        "avg_last_3_months",
+        "avg_last_6_months",
+        "yearly_avg_consumption",
+        "max_historical_consumption",
+        "min_historical_consumption",
+    ]
 
-        df = add_historical_features(
-            df,
-            target_column="electricity_consumption",
-        )
+    for col in leakage_cols:
+        if col in df.columns:
+            df.drop(columns=[col], inplace=True)
 
     # =====================================================
     # FINAL CLEANUP
     # =====================================================
-    df.replace(
-        [np.inf, -np.inf],
-        0,
-        inplace=True,
-    )
-
+    df.replace([np.inf, -np.inf], 0, inplace=True)
     df.fillna(0, inplace=True)
 
     return df

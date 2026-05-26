@@ -1,139 +1,90 @@
 # Machine_Learning/evaluation.py
-
 import numpy as np
-
 from sklearn.metrics import (
-
     mean_absolute_error,
-
     mean_squared_error,
-
     r2_score,
 )
 
 
 # =========================================================
-# SAFE MAPE
+# SAFE MAPE (STABLE VERSION)
 # =========================================================
-def mean_absolute_percentage_error(
-    y_true,
-    y_pred,
-):
+def mean_absolute_percentage_error(y_true, y_pred):
 
-    y_true = np.array(y_true)
+    y_true = np.array(y_true, dtype=float)
+    y_pred = np.array(y_pred, dtype=float)
 
-    y_pred = np.array(y_pred)
+    epsilon = 1e-8  # prevents division instability
 
-    # -----------------------------------------------------
-    # AVOID DIVISION BY ZERO
-    # -----------------------------------------------------
-    non_zero_mask = y_true != 0
+    denominator = np.maximum(np.abs(y_true), epsilon)
 
-    y_true = y_true[non_zero_mask]
+    mape = np.mean(np.abs((y_true - y_pred) / denominator)) * 100
 
-    y_pred = y_pred[non_zero_mask]
-
-    if len(y_true) == 0:
-        return 0
-
-    mape = np.mean(
-        np.abs((y_true - y_pred) / y_true)
-    ) * 100
-
-    return mape
+    return float(mape)
 
 
 # =========================================================
-# MODEL EVALUATION
+# MAIN EVALUATION FUNCTION
 # =========================================================
-def evaluate_model(
-    y_test,
-    predictions,
-):
+def evaluate_model(y_test, predictions):
 
     # -----------------------------------------------------
-    # METRICS
+    # CORE METRICS
     # -----------------------------------------------------
-    mae = mean_absolute_error(
-        y_test,
-        predictions,
-    )
-
-    mse = mean_squared_error(
-        y_test,
-        predictions,
-    )
-
+    mae = mean_absolute_error(y_test, predictions)
+    mse = mean_squared_error(y_test, predictions)
     rmse = np.sqrt(mse)
-
-    r2 = r2_score(
-        y_test,
-        predictions,
-    )
-
-    mape = mean_absolute_percentage_error(
-        y_test,
-        predictions,
-    )
+    r2 = r2_score(y_test, predictions)
+    mape = mean_absolute_percentage_error(y_test, predictions)
 
     # -----------------------------------------------------
-    # ACCURACY ESTIMATION
+    # NO FAKE ACCURACY (IMPORTANT FIX)
     # -----------------------------------------------------
-    accuracy = max(
-        0,
-        100 - mape,
-    )
+    # Regression does NOT have accuracy %
+    # We intentionally remove misleading metric
 
     # -----------------------------------------------------
-    # ROUND VALUES
+    # RAW METRICS (for system use)
     # -----------------------------------------------------
-    mae = round(float(mae), 4)
+    results_raw = {
+        "mae": float(mae),
+        "mse": float(mse),
+        "rmse": float(rmse),
+        "r2": float(r2),
+        "mape_percentage": float(mape),
+    }
 
-    mse = round(float(mse), 4)
-
-    rmse = round(float(rmse), 4)
-
-    r2 = round(float(r2), 4)
-
-    mape = round(float(mape), 4)
-
-    accuracy = round(float(accuracy), 2)
+    # -----------------------------------------------------
+    # ROUNDED METRICS (for UI / logging)
+    # -----------------------------------------------------
+    results_rounded = {
+        "mae": round(mae, 4),
+        "mse": round(mse, 4),
+        "rmse": round(rmse, 4),
+        "r2": round(r2, 4),
+        "mape_percentage": round(mape, 4),
+    }
 
     # -----------------------------------------------------
     # LOGGING
     # -----------------------------------------------------
     print("\n========== MODEL EVALUATION ==========\n")
 
-    print(f"MAE                : {mae}")
-
-    print(f"MSE                : {mse}")
-
-    print(f"RMSE               : {rmse}")
-
-    print(f"R2 SCORE           : {r2}")
-
-    print(f"MAPE (%)           : {mape}")
-
-    print(f"MODEL ACCURACY (%) : {accuracy}")
+    print(f"MAE     : {results_rounded['mae']}")
+    print(f"MSE     : {results_rounded['mse']}")
+    print(f"RMSE    : {results_rounded['rmse']}")
+    print(f"R2      : {results_rounded['r2']}")
+    print(f"MAPE %  : {results_rounded['mape_percentage']}")
 
     print("\n======================================\n")
 
     # -----------------------------------------------------
-    # RETURN
+    # RETURN BOTH (BEST PRACTICE)
     # -----------------------------------------------------
     return {
-
-        "mae": mae,
-
-        "mse": mse,
-
-        "rmse": rmse,
-
-        "r2": r2,
-
-        "mape_percentage": mape,
-
-        "accuracy_percentage": accuracy,
+        "raw": results_raw,
+        "rounded": results_rounded,
     }
 
 
@@ -143,12 +94,8 @@ def evaluate_model(
 if __name__ == "__main__":
 
     y_true = [100, 200, 300, 400, 500]
-
     y_pred = [110, 190, 310, 395, 520]
 
-    results = evaluate_model(
-        y_true,
-        y_pred,
-    )
+    results = evaluate_model(y_true, y_pred)
 
     print(results)
