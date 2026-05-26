@@ -167,3 +167,4 @@ Amenity-Tracking-Backend
 
 # Testing Scripts
 # Testing_Scripts
+ *.env*
