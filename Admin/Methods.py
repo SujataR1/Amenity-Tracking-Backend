@@ -1,3 +1,4 @@
+#Admin/Methods.py
 from tortoise.transactions import atomic
 import json
 from tortoise.exceptions import IntegrityError
@@ -192,7 +193,7 @@ async def delete_admin(payload: dict, authorization: str):
     # Blacklist the token
     token = await get_token_from_authorization_header_value(authorization)
     await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-    update_user_count = await update_admin_user_count
+    update_user_count = await update_admin_user_count()
     if update_user_count:
         return {"message": "Admin deleted successfully and token blacklisted"}
 
@@ -287,8 +288,8 @@ async def request_admin_password_reset(email: str) -> dict:
         try:
             new_otp = OTP(
                 otp_code=otp_code,
-                user_id=admin.id,
-                purpose="PASSWORD_RESET",
+                user=admin,
+                purpose=OTPTypeEnum.PASSWORD_RESET,
                 expiration=datetime.now(timezone.utc)
                 + timedelta(minutes=10),  # OTP valid for 10 minutes
             )
@@ -412,18 +413,12 @@ async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
 async def generate_and_send_otp(admin_id: str, purpose: str) -> dict:
     """
     Generates an OTP for an admin, stores it in the database, and sends it via email.
-
-    Args:
-        admin_id (str): The ID of the admin for whom the OTP is generated.
-        purpose (str): The purpose of the OTP (e.g., TWO_FA, PASSWORD_RESET).
-
-    Returns:
-        dict: A success message if the OTP is generated and sent.
-
-    Raises:
-        HTTPException: If the admin is not found or the OTP could not be sent.
+    Reuses valid OTP if already present, otherwise generates a new one.
     """
-    # Retrieve the admin
+
+    # -----------------------------------------------------
+    # 1. Fetch admin safely
+    # -----------------------------------------------------
     admin = await Admin.get_or_none(id=admin_id)
     if not admin:
         raise HTTPException(
@@ -431,38 +426,60 @@ async def generate_and_send_otp(admin_id: str, purpose: str) -> dict:
             detail="Admin not found.",
         )
 
-    # Check for existing OTP for this admin and purpose
-    existing_otp = await OTP.filter(user_id=admin.id, purpose=purpose).first()
+    now = datetime.now(timezone.utc)
 
-    # Validate existing OTP or generate a new one
-    if existing_otp and existing_otp.expiration > datetime.now(timezone.utc):
+    # -----------------------------------------------------
+    # 2. Check for existing valid OTP
+    # -----------------------------------------------------
+    existing_otp = await OTP.filter(
+        user=admin,
+        purpose=purpose
+    ).first()
+
+    if existing_otp and existing_otp.expiration > now:
         otp_code = existing_otp.otp_code
     else:
-        otp_code = await generate_random_otp()  # Generate a new random OTP
-        await OTP.filter(
-            user_id=admin.id, purpose=purpose
-        ).delete()  # Invalidate old OTPs
+        # -----------------------------------------------------
+        # 3. Generate new OTP
+        # -----------------------------------------------------
+        otp_code = await generate_random_otp()
 
-        # Create and save the new OTP
+        # Invalidate old OTPs for same purpose
+        await OTP.filter(
+            user=admin,
+            purpose=purpose
+        ).delete()
+
+        # -----------------------------------------------------
+        # 4. Save new OTP
+        # -----------------------------------------------------
         try:
             new_otp = OTP(
-                user_id=admin.id,
+                user=admin,
                 purpose=purpose,
                 otp_code=otp_code,
-                expiration=datetime.now(timezone.utc)
-                + timedelta(minutes=10),  # Valid for 10 minutes
+                expiration=now + timedelta(minutes=10),
             )
             await new_otp.save()
+
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error generating OTP: {str(e)}",
             )
 
-    # Prepare and send the OTP via email
+    # -----------------------------------------------------
+    # 5. Email content generation
+    # -----------------------------------------------------
     email_content = await get_email_content(
-        "otp_template", username=admin.name, otp_code=otp_code
+        "otp_template",
+        username=admin.name,
+        otp_code=otp_code
     )
+
+    # -----------------------------------------------------
+    # 6. Send email
+    # -----------------------------------------------------
     email_sent = await send_email(
         to_email=admin.email,
         subject=email_content["subject"],
@@ -475,8 +492,9 @@ async def generate_and_send_otp(admin_id: str, purpose: str) -> dict:
             detail="OTP could not be sent.",
         )
 
-    return {"message": "OTP sent successfully."}
-
+    return {
+        "message": "OTP sent successfully."
+    }
 
 async def verify_2fa_and_login(email: str, otp_code: str):
     """
@@ -484,6 +502,11 @@ async def verify_2fa_and_login(email: str, otp_code: str):
     """
     # Retrieve the OTP entry for the user and 2FA purpose
     user = await Admin.get_or_none(email=email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin not found"
+    )
     user_id = user.id
     verified = await verify_otp(user_id, otp_code, purpose=OTPTypeEnum.TWO_FA)
 
@@ -511,7 +534,7 @@ async def logout_admin(authorization: str) -> dict:
     """
     try:
         token = await get_token_from_authorization_header_value(authorization)
-        await Blacklisted_Tokens.create(token=token)
+        await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
         return {"message": "Admin successfully logged out"}
     except Exception as e:
         raise HTTPException(
@@ -533,7 +556,7 @@ async def reset_admin_password(email: str, otp_code: str, new_password: str):
 
     # Verify OTP
     verified = await verify_otp(
-        otp_code=otp_code, user_id=admin.id, purpose="PASSWORD_RESET"
+        otp_code=otp_code, user_id=admin.id, purpose=OTPTypeEnum.PASSWORD_RESET
     )
     if not verified:
         raise HTTPException(

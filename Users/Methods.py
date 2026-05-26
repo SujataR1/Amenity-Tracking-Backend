@@ -6,11 +6,10 @@ from Database_and_ORM.Database_Models import (
 from Users.Data_Schemas import UserCreate, OTPTypeEnum
 from Comms.Methods import send_email, get_email_content
 from tortoise.exceptions import IntegrityError, DoesNotExist
-from typing import Union
+from typing import Dict
 from datetime import datetime, timedelta, timezone
 from decouple import config
 from fastapi import HTTPException, status, UploadFile
-from typing import Dict
 from Utility_Methods.Utility_Methods import (
     create_jwt,
     verify_otp,
@@ -24,538 +23,414 @@ from Admin.Methods import update_admin_user_count
 import os
 
 
-async def create_user(user_data: UserCreate) -> Union[User, dict]:
-    """
-    Creates a new user in the database with hashed password.
-    """
-    # Hash the password with a salt
+# =========================================================
+# CREATE USER
+# =========================================================
+async def create_user(user_data: UserCreate):
     hashed_password = await get_hashed_password(user_data.password)
 
     user = User(
         name=user_data.name,
-        email=user_data.email,  # Defaults to False if not passed
+        email=user_data.email,
         password=hashed_password,
         address=user_data.address,
         pin_code=user_data.pin_code,
-        phone_number=user_data.phone_number,  # Defaults to False if not passed
+        phone_number=user_data.phone_number,
     )
 
     try:
-        count = await update_admin_user_count()
         await user.save()
-        if count:
-            return {"message": "Account succesfully created!"}
+        await update_admin_user_count()
+
+        return {
+            "message": "Account successfully created",
+            "user_id": user.id,
+        }
+
     except IntegrityError:
-        return {"error": "A user with same details already exists."}
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User already exists",
+        )
 
 
+# =========================================================
+# AUTHENTICATION
+# =========================================================
 async def authenticate_user(email: str, password: str):
-    """
-    Authenticates a user by email and password.
-    If 2FA is enabled, requires OTP verification before generating JWT.
-    """
+
     user = await User.get_or_none(email=email)
+
+    if not user:
+        raise HTTPException(401, "Invalid credentials")
+
+    if not user.password:
+        raise HTTPException(401, "Invalid credentials")
+
     verified = await verify_user_password(
-        entered_password=password, user_password=user.password
+        entered_password=password,
+        user_password=user.password,
     )
-    if user is None or not verified:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-        )
 
-    # Check if 2FA is enabled for the user
-    if user and verified and user.two_fa_status:
-        await generate_and_send_otp(email, purpose=OTPTypeEnum.TWO_FA)
-        raise HTTPException(
-            status_code=status.HTTP_308_PERMANENT_REDIRECT,
-            detail="2FA is enabled. Please verify with OTP.",
-        )
+    if not verified:
+        raise HTTPException(401, "Invalid credentials")
 
-    # Generate JWT token if 2FA is not enabled or OTP verification is successful
+    # 2FA FLOW
+    if user.two_fa_status:
+        await generate_and_send_otp(email, OTPTypeEnum.TWO_FA)
+
+        return {
+            "message": "2FA required. OTP sent.",
+            "two_fa_required": True,
+        }
+
     token = await create_jwt(
         str(user.id),
         expiration_duration=int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")),
     )
-    return user, token
+
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+        },
+        "token": token,
+        "message": "Login successful",
+    }
 
 
+# =========================================================
+# LOGOUT
+# =========================================================
 async def logout_user(authorization: str, payload: dict):
-    """
-    Logs out the user by adding the token to the blacklist.
-    """
-    if payload:
-        try:
-            token = await get_token_from_authorization_header_value(
-                authorization
-            )
-            await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-            return {"message": "Successfully logged out"}
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Either you have already logged out, or there's something wrong on our end",
-            )
-    else:
-        return "You have already logged out!"
+
+    if not payload:
+        return {"message": "Already logged out"}
+
+    try:
+        token = await get_token_from_authorization_header_value(authorization)
+        await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+
+        return {"message": "Successfully logged out"}
+
+    except Exception:
+        raise HTTPException(500, "Logout failed")
 
 
+# =========================================================
+# UPDATE USER
+# =========================================================
 async def update_user(update_data: Dict, payload: dict):
-    """
-    Updates user details based on user_id extracted from JWT token in authorization header.
-    """
-    # Manually call verify_jwt with the authorization header
 
-    if payload:
-        user_id = payload.get("user_id")
+    user_id = payload.get("user_id")
 
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Please log in",
-            )
+    if not user_id:
+        raise HTTPException(401, "Login required")
 
-        # Retrieve the user from the database
-        user = await User.get_or_none(id=user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
+    user = await User.get_or_none(id=user_id)
 
-        changes = {}
+    if not user:
+        raise HTTPException(404, "User not found")
 
-        # Iterate through the update data and apply changes
-        for field, new_value in update_data.items():
-            if field == "role":  # Exclude updating the role field
-                continue
-            current_value = getattr(user, field)
-            if current_value != new_value:
-                setattr(user, field, new_value)
-                changes[field] = (
-                    f"`{field}` updated from `{current_value}` to `{new_value}`"
-                )
+    changes = {}
+
+    for field, new_value in update_data.items():
+
+        if field == "role":
+            continue
+
+        if not hasattr(user, field):
+            continue
+
+        old_value = getattr(user, field)
+
+        if old_value != new_value:
+            setattr(user, field, new_value)
+            changes[field] = {"from": old_value, "to": new_value}
 
             if field == "email":
                 user.email_verified = False
-                changes["email_verified"] = (
-                    "Set to `False` due to email change"
-                )
+                changes["email_verified"] = {"from": True, "to": False}
 
-        if changes:
-            await user.save()
-            return changes
-        else:
-            return {"message": "Nothing was changed!"}
+    if not changes:
+        return {"message": "Nothing was changed"}
 
-    else:
-        return "Please login to update your data!"
+    await user.save()
+
+    return {"message": "Updated successfully", "changes": changes}
 
 
+# =========================================================
+# DELETE USER
+# =========================================================
 async def delete_user(payload: dict, authorization: str):
-    """
-    Deletes a user based on user ID extracted from JWT token and blacklists the token.
-    """
-    # Extract user_id from payload
+
     user_id = payload.get("user_id")
+
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please log in first to delete your account",
-        )
+        raise HTTPException(400, "Invalid request")
 
-    # Find the user and delete
     user = await User.get_or_none(id=user_id)
+
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise HTTPException(404, "User not found")
 
-    count = await update_admin_user_count()
-    await user.delete()
-
-    # Blacklist the token
     token = await get_token_from_authorization_header_value(authorization)
-    blacklisted = await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
-    if blacklisted:
-        if count:
-            return {
-                "message": "User deleted successfully and token blacklisted"
-            }
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Something went wrong on our end",
-        )
+
+    # blacklist FIRST (safer)
+    await Blacklisted_Tokens.create(Blacklisted_Tokens=token)
+
+    await user.delete()
+    await update_admin_user_count()
+
+    return {"message": "User deleted successfully"}
 
 
+# =========================================================
+# 2FA LOGIN VERIFY
+# =========================================================
 async def verify_2fa_and_login(email: str, otp_code: str):
-    """
-    Verifies the OTP for 2FA and, if valid, generates a JWT token and sets it in the response headers.
-    """
-    # Retrieve the OTP entry for the user and 2FA purpose
+
     user = await User.get_or_none(email=email)
-    user_id = user.id
-    verified = await verify_otp(user_id, otp_code, purpose=OTPTypeEnum.TWO_FA)
 
-    if verified:
-        # Generate JWT token
-        token = await create_jwt(
-            user_id,
-            expiration_duration=int(
-                config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")
-            ),
-        )
-        response = token, user
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="2FA Verification Failed",
-        )
+    if not user:
+        raise HTTPException(404, "User not found")
 
-    return response
-
-
-async def generate_and_send_otp(email: str, purpose: OTPTypeEnum) -> dict:
-    """
-    Checks for an existing OTP for the user and purpose. If none exists or it's expired,
-    generates a new OTP, stores it, and sends it via email.
-    """
-    # Look up the user_id based on the email
-    try:
-        user = await User.get(email=email)
-        user_id = user.id
-    except DoesNotExist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User with this email does not exist.",
-        )
-
-    # Look for an existing OTP entry
-    existing_otp = await OTP.filter(user_id=user_id, purpose=purpose).first()
-
-    # Check if OTP exists and is still valid
-    if existing_otp and existing_otp.expiration > datetime.now(timezone.utc):
-        otp_code = existing_otp.otp_code  # Use the existing OTP if valid
-    else:
-        # Generate a new random 6-digit OTP
-        otp_code = (
-            await generate_random_otp()
-        )  # Example of a 6-digit random OTP using UUID
-
-        # Invalidate any existing OTPs for this user and purpose
-        await OTP.filter(user_id=user_id, purpose=purpose).delete()
-
-        # Attempt to create a new OTP entry
-        try:
-            otp_entry = OTP(
-                otp_code=otp_code,
-                user_id=user_id,
-                purpose=purpose,
-                expiration=datetime.now(timezone.utc)
-                + timedelta(minutes=10),  # OTP valid for 10 minutes
-            )
-            await otp_entry.save()
-        except IntegrityError as e:
-            # Log detailed error and raise a user-friendly exception
-            print(f"Integrity error while saving OTP: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An error occurred while generating the OTP. Please try again.",
-            )
-        except Exception as e:
-            # General error handling for any unexpected issue
-            print(f"Unexpected error while saving OTP: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An unexpected error occurred.",
-            )
-
-    # Prepare the email content
-    values = {"username": user.name, "otp_code": otp_code}
-    if purpose == OTPTypeEnum.TWO_FA:
-        content = await get_email_content("2fa_verification", **values)
-    elif purpose == OTPTypeEnum.MAIL_VERIFICATION:
-        content = await get_email_content("email_verification", **values)
-    elif purpose == OTPTypeEnum.PASSWORD_RESET:
-        content = await get_email_content("password_reset", **values)
-
-    # Send the email
-    email_sent = await send_email(
-        to_email=email, subject=content["subject"], body=content["body"]
+    verified = await verify_otp(
+        user.id,
+        otp_code,
+        purpose=OTPTypeEnum.TWO_FA,
     )
 
-    if email_sent:
-        return {"message": "OTP sent successfully"}
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OTP could not be sent.",
-        )
+    if not verified:
+        raise HTTPException(401, "Invalid OTP")
 
+    token = await create_jwt(
+        str(user.id),
+        expiration_duration=int(config("JWT_VALIDITY_FOR_NORMAL_SESSIONS")),
+    )
 
-async def get_user_data(payload: dict) -> dict:
-    """
-    Retrieves user data by user_id, excluding the password field.
-    """
-    user_id = payload.get("user_id")
-    user = await User.get_or_none(id=user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    # Convert user instance to a dictionary excluding private/internal attributes
-    user_data = {
-        field: value
-        for field, value in user.__dict__.items()
-        if not field.startswith("_")
+    return {
+        "user": {"id": user.id, "email": user.email},
+        "token": token,
     }
 
-    # Remove sensitive fields
-    user_data.pop("password", None)
-    user_data.pop("id", None)
 
-    # Handle profile picture
-    if user_data.get("profile_picture_path"):
-        encoded_picture = await encode_path_to_base64(
-            user_data["profile_picture_path"]
-        )
-        if (
-            encoded_picture
-            == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
-        ):
-            # If the path is invalid, remove the field
-            user_data.pop("profile_picture_path", None)
-        else:
-            # Otherwise, set the Base64-encoded string
-            user_data["profile_picture"] = encoded_picture
+# =========================================================
+# OTP GENERATION
+# =========================================================
+async def generate_and_send_otp(email: str, purpose: OTPTypeEnum):
+
+    user = await User.get_or_none(email=email)
+
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    existing_otp = await OTP.filter(
+        user_id=user.id,
+        purpose=purpose
+    ).first()
+
+    now = datetime.now(timezone.utc)
+
+    if existing_otp and existing_otp.expiration > now:
+        otp_code = existing_otp.otp_code
     else:
-        user_data["profile_picture"] = None
+        otp_code = await generate_random_otp()
 
-    # Remove the path field to keep the response clean
-    user_data.pop("profile_picture_path", None)
+        await OTP.filter(user_id=user.id, purpose=purpose).delete()
 
-    return user_data
+        await OTP.create(
+            otp_code=otp_code,
+            user_id=user.id,
+            purpose=purpose,
+            expiration=now + timedelta(minutes=10),
+        )
+
+    if purpose == OTPTypeEnum.TWO_FA:
+        content = await get_email_content("2fa_verification", username=user.name, otp_code=otp_code)
+    elif purpose == OTPTypeEnum.MAIL_VERIFICATION:
+        content = await get_email_content("email_verification", username=user.name, otp_code=otp_code)
+    elif purpose == OTPTypeEnum.PASSWORD_RESET:
+        content = await get_email_content("password_reset", username=user.name, otp_code=otp_code)
+    else:
+        raise HTTPException(400, "Invalid OTP purpose")
+
+    sent = await send_email(email, content["subject"], content["body"])
+
+    if not sent:
+        raise HTTPException(500, "Failed to send OTP")
+
+    return {"message": "OTP sent successfully"}
 
 
-async def verify_email_otp(payload: Dict, otp_code: str) -> bool:
-    """
-    Verifies the OTP for email verification. If valid, marks the user's email as verified.
-    """
-    user_id = payload.get("user_id")
-    user = await User.get(id=user_id)
+# =========================================================
+# USER DATA
+# =========================================================
+async def get_user_data(payload: dict):
 
-    if await verify_otp(
-        otp_code, user_id, purpose=OTPTypeEnum.MAIL_VERIFICATION
-    ):
-        # Update the user's email_verified status
-        user.email_verified = True
-        await user.save()
-        return True
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid or expired OTP for email verification",
+    user = await User.get_or_none(id=payload.get("user_id"))
+
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "address": user.address,
+        "phone_number": user.phone_number,
+        "email_verified": user.email_verified,
+    }
+
+
+# =========================================================
+# EMAIL OTP VERIFY
+# =========================================================
+async def verify_email_otp(payload: dict, otp_code: str):
+
+    user = await User.get_or_none(id=payload.get("user_id"))
+
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    verified = await verify_otp(
+        user.id,
+        otp_code,
+        purpose=OTPTypeEnum.MAIL_VERIFICATION,
     )
 
+    if not verified:
+        raise HTTPException(400, "Invalid OTP")
 
-async def request_password_reset_by_email(email: str) -> str:
-    """
-    Checks if a user exists with the provided email and generates a password reset JWT token.
-    """
-    # Find user by email
+    user.email_verified = True
+    await user.save()
+
+    return True
+
+
+# =========================================================
+# PASSWORD RESET FLOW
+# =========================================================
+async def request_password_reset_by_email(email: str):
+
     user = await User.get_or_none(email=email)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No account found with the provided email.",
-        )
 
-    # Generate and send OTP using the existing method
-    try:
-        result = await generate_and_send_otp(
-            email, purpose=OTPTypeEnum.PASSWORD_RESET
-        )
-        return result  # Result from `generate_and_send_otp`
-    except HTTPException:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error generating or sending the OTP",
-        )
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    return await generate_and_send_otp(email, OTPTypeEnum.PASSWORD_RESET)
 
 
 async def reset_password(email: str, otp_code: str, new_password: str):
-    user = await User.get_or_none(email=email)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User with this email was not found.",
-        )
 
-    # Verify OTP using the existing verify_otp method
+    user = await User.get_or_none(email=email)
+
+    if not user:
+        raise HTTPException(404, "User not found")
+
     verified = await verify_otp(
-        otp_code=otp_code,
-        user_id=user.id,
+        user.id,
+        otp_code,
         purpose=OTPTypeEnum.PASSWORD_RESET,
     )
+
     if not verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired OTP for password reset.",
-        )
+        raise HTTPException(400, "Invalid OTP")
 
-    # Update password if OTP is verified
-    try:
-        hashed_password = await get_hashed_password(new_password)
-        user.password = hashed_password
-        await user.save()
-        return {"message": "Password has been reset successfully."}
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Something went wrong on our end",
-        )
+    user.password = await get_hashed_password(new_password)
+    await user.save()
+
+    return {"message": "Password reset successful"}
 
 
-async def get_2fa_status(payload: dict) -> str:
-    """
-    Retrieves the current 2FA status for a user.
-    """
-    user_id = payload.get("user_id")
-    user = await User.get_or_none(id=user_id)
-    if user.two_fa_status:
-        return {"message": "You have 2FA enabled!"}
-    elif not user.two_fa_status:
-        return {"message": "You have 2FA disabled!"}
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Something wrong happened on our end!",
-    )
+# =========================================================
+# 2FA STATUS
+# =========================================================
+async def get_2fa_status(payload: dict):
 
+    user = await User.get_or_none(id=payload.get("user_id"))
 
-async def toggle_2fa_status(payload: dict, entered_password: str) -> str:
-    """
-    Toggles the 2FA status for a user and returns the new status.
-    Ensures the user's email is verified before enabling 2FA.
-    """
-    user_id = payload.get("user_id")
-
-    # Fetch the user
-    user = await User.get_or_none(id=user_id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
-        )
+        raise HTTPException(404, "User not found")
 
-    # Verify the password
+    return {"two_fa_enabled": user.two_fa_status}
+
+
+# =========================================================
+# TOGGLE 2FA
+# =========================================================
+async def toggle_2fa_status(payload: dict, entered_password: str):
+
+    user = await User.get_or_none(id=payload.get("user_id"))
+
+    if not user:
+        raise HTTPException(404, "User not found")
+
     verified = await verify_user_password(
-        entered_password=entered_password, user_password=user.password
+        entered_password=entered_password,
+        user_password=user.password,
     )
+
     if not verified:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Please try again.",
-        )
+        raise HTTPException(401, "Wrong password")
 
-    # Ensure email is verified before enabling 2FA
     if not user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You must verify your email before enabling 2FA.",
-        )
+        raise HTTPException(403, "Verify email first")
 
-    # Toggle the 2FA status
     user.two_fa_status = not user.two_fa_status
     await user.save()
 
-    if user.two_fa_status:
-        return {"message": "You have enabled 2FA!"}
-    else:
-        return {"message": "You have disabled 2FA!"}
+    return {
+        "message": "2FA enabled" if user.two_fa_status else "2FA disabled"
+    }
 
 
-async def upload_profile_picture(payload: dict, file: UploadFile) -> dict:
+# =========================================================
+# PROFILE PICTURE
+# =========================================================
+async def upload_profile_picture(payload: dict, file: UploadFile):
+
     user_id = payload.get("user_id")
+
     directory = os.path.join(
-        f"{config('USER_MEDIA_PATH')}",
-        f"{config('USER_PROFILE_PICTURES_DIRECTORY')}",
+        config("USER_MEDIA_PATH"),
+        config("USER_PROFILE_PICTURES_DIRECTORY"),
     )
+
     os.makedirs(directory, exist_ok=True)
 
-    if file.content_type not in [
-        "image/jpeg",
-        "image/png",
-        "image/jpg",
-    ]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only JPEG and PNG images are allowed.",
-        )
+    content = await file.read()
 
-    # Check file size (limit 500kB)
-    file_size = await file.read()  # read content to check size
-    if len(file_size) > int(config("MAXIMUM_IMAGE_SIZE")) * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size should not exceed {config('MAXIMUM_IMAGE_SIZE')} mBs.",
-        )
+    if len(content) > int(config("MAXIMUM_IMAGE_SIZE")) * 1024 * 1024:
+        raise HTTPException(400, "File too large")
 
-    await file.seek(0)
+    file_path = os.path.join(directory, f"{user_id}_{file.filename}")
 
-    # Create the file path
-    file_path = os.path.join(
-        directory,
-        f"{config('USER_PROFILE_PICTURE_PREFIX')}_{user_id}_{file.filename}",
-    )
+    with open(file_path, "wb") as f:
+        f.write(content)
 
-    # Save the file to the directory
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-
-    # Update the user profile picture path in the database
     user = await User.get(id=user_id)
     user.profile_picture_path = file_path
     await user.save()
 
-    return {"message": "Profile picture uploaded successfully"}
+    return {"message": "Uploaded successfully"}
 
 
-async def get_profile_picture(payload: dict) -> dict:
-    """
-    Retrieves the profile picture for a user in Base64 format with MIME encoding.
-    """
-    # Fetch the user from the database
-    user_id = payload.get("user_id")
-    user = await User.get_or_none(id=user_id)
+# =========================================================
+# GET PROFILE PICTURE
+# =========================================================
+async def get_profile_picture(payload: dict):
+
+    user = await User.get_or_none(id=payload.get("user_id"))
+
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise HTTPException(404, "User not found")
 
-    # Check if user has a profile picture path
     if not user.profile_picture_path:
-        return {"message": "No profile picture available."}
+        return {"message": "No profile picture"}
 
-    # Convert profile picture to Base64 using the utility method
-    try:
-        profile_picture_base64 = await encode_path_to_base64(
-            user.profile_picture_path
-        )
-        if (
-            profile_picture_base64
-            == "Invalid path provided. Path is neither a file nor a directory, or doesn't exist."
-        ):
-            return {"profile_picture": None}
+    encoded = await encode_path_to_base64(user.profile_picture_path)
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error encoding profile picture: {str(e)}",
-        )
-
-    return {"profile_picture": profile_picture_base64}
+    return {"profile_picture": encoded}
