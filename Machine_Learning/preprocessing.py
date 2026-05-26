@@ -2,18 +2,13 @@
 
 import pandas as pd
 import numpy as np
-
 from Questionnaire.Data_Schemas import ClimateEnum
 
 
-# -----------------------------
-# BOOLEAN SAFE CONVERSION
-# -----------------------------
+# =========================================================
+# SAFE BOOLEAN CONVERSION
+# =========================================================
 def convert_boolean(value):
-    """
-    Robust boolean conversion:
-    Handles True/False, 1/0, "true"/"false", None
-    """
     if pd.isna(value):
         return 0
 
@@ -23,13 +18,11 @@ def convert_boolean(value):
     return 1 if bool(value) else 0
 
 
-# -----------------------------
-# CLIMATE ENCODING
-# -----------------------------
+# =========================================================
+# SAFE CLIMATE CONVERSION
+# =========================================================
 def convert_climate(climate):
-    """
-    Safe enum / string / numeric handling
-    """
+
     if pd.isna(climate):
         return 1
 
@@ -45,13 +38,15 @@ def convert_climate(climate):
     return climate_mapping.get(climate, 1)
 
 
-# -----------------------------
-# MAIN PREPROCESSING PIPELINE
-# -----------------------------
+# =========================================================
+# CLEANING PIPELINE (ONLY CLEANING - NO FEATURES)
+# =========================================================
 def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
+    df = df.copy()
+
     # -------------------------
-    # REQUIRED BOOLEAN COLUMNS
+    # BOOLEAN COLUMNS CLEANING
     # -------------------------
     boolean_columns = [
         "four", "five", "six", "seven", "eight",
@@ -59,32 +54,28 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         "fifteen", "sixteen"
     ]
 
-    for column in boolean_columns:
-        if column in df.columns:
-            df[column] = df[column].apply(convert_boolean)
+    for col in boolean_columns:
+        if col in df.columns:
+            df[col] = df[col].apply(convert_boolean)
         else:
-            df[column] = 0  # safety fallback
+            df[col] = 0
 
     # -------------------------
-    # CLIMATE COLUMN
+    # CLIMATE CLEANING
     # -------------------------
     if "nineteen" in df.columns:
         df["nineteen"] = df["nineteen"].apply(convert_climate)
     else:
         df["nineteen"] = 1
 
-
     # -------------------------
-    # SAFETY: numeric coercion
+    # BASIC NUMERIC SAFETY
     # -------------------------
-    numeric_columns = df.columns
-
-    for col in numeric_columns:
+    for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="ignore")
 
-
     # -------------------------
-    # CLEANING
+    # FINAL CLEANUP
     # -------------------------
     df.replace([np.inf, -np.inf], 0, inplace=True)
     df.fillna(0, inplace=True)

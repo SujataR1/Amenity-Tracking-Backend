@@ -1,8 +1,8 @@
 # Machine_Learning/train_model.py
 
 import os
-import joblib
 import pandas as pd
+import joblib
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
@@ -10,7 +10,6 @@ from sklearn.model_selection import train_test_split
 from Machine_Learning.preprocessing import preprocess_dataframe
 from Machine_Learning.feature_engineering import create_features
 from Machine_Learning.evaluation import evaluate_model
-
 from Machine_Learning.constants import (
     TARGET_COLUMN,
     TEST_SIZE,
@@ -20,20 +19,34 @@ from Machine_Learning.constants import (
 )
 
 
-def train_model():
+# =========================================================
+# BASELINE TRAINING (SKLEARN ONLY FOR COMPARISON)
+# =========================================================
+def train_baseline_model():
 
     dataset_path = "Machine_Learning/datasets/training_dataset.csv"
 
     df = pd.read_csv(dataset_path)
 
+    # -------------------------
+    # CLEANING PIPELINE
+    # -------------------------
     df = preprocess_dataframe(df)
 
+    # -------------------------
+    # FEATURE ENGINEERING
+    # -------------------------
     df = create_features(df)
 
+    # -------------------------
+    # SPLIT FEATURES / TARGET
+    # -------------------------
     X = df.drop(columns=[TARGET_COLUMN])
-
     y = df[TARGET_COLUMN]
 
+    # -------------------------
+    # TRAIN / TEST SPLIT
+    # -------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -41,8 +54,11 @@ def train_model():
         random_state=RANDOM_STATE,
     )
 
+    # -------------------------
+    # BASELINE MODEL
+    # -------------------------
     model = RandomForestRegressor(
-        n_estimators=100,
+        n_estimators=200,
         random_state=RANDOM_STATE,
     )
 
@@ -50,14 +66,23 @@ def train_model():
 
     predictions = model.predict(X_test)
 
+    # -------------------------
+    # EVALUATION
+    # -------------------------
     evaluate_model(y_test, predictions)
 
+    # -------------------------
+    # SAVE MODEL
+    # -------------------------
     os.makedirs(MODEL_DIRECTORY, exist_ok=True)
 
     joblib.dump(model, MODEL_PATH)
 
-    print(f"\nModel saved successfully at: {MODEL_PATH}")
+    print("\n✅ Baseline model saved successfully at:", MODEL_PATH)
 
 
+# =========================================================
+# RUN
+# =========================================================
 if __name__ == "__main__":
-    train_model()
+    train_baseline_model()

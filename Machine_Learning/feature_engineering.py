@@ -4,10 +4,15 @@ import pandas as pd
 import numpy as np
 
 
+# =========================================================
+# SINGLE SOURCE OF TRUTH FEATURE ENGINEERING
+# =========================================================
 def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
+    df = df.copy()
+
     # -----------------------------
-    # SAFETY: convert to numeric (VERY IMPORTANT)
+    # SAFE BOOLEAN CONVERSION
     # -----------------------------
     bool_cols = [
         "four", "five", "six", "seven", "eight",
@@ -17,31 +22,30 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in bool_cols:
         if col in df.columns:
-            df[col] = df[col].astype(int)
+            df[col] = df[col].fillna(0).astype(int)
+        else:
+            df[col] = 0  # ensure column always exists
 
     # -----------------------------
     # FEATURE 1: people per room
-    # avoid division errors
     # -----------------------------
-    if "one" in df.columns and "three" in df.columns:
-        df["people_per_room"] = df["one"] / (df["three"].replace(0, 1))
+    if "one" not in df.columns:
+        df["one"] = 0
+    if "three" not in df.columns:
+        df["three"] = 1  # avoid division issue
 
-    else:
-        df["people_per_room"] = 0
-
+    df["people_per_room"] = df["one"] / df["three"].replace(0, 1)
 
     # -----------------------------
     # FEATURE 2: vacation factor
     # -----------------------------
-    if "eighteen" in df.columns:
-        df["vacation_factor"] = df["eighteen"] * 0.1
-    else:
-        df["vacation_factor"] = 0
+    if "eighteen" not in df.columns:
+        df["eighteen"] = 0
 
+    df["vacation_factor"] = df["eighteen"] * 0.1
 
     # -----------------------------
     # FEATURE 3: appliance score
-    # (energy-heavy usage indicator)
     # -----------------------------
     appliance_cols = [
         "four", "five", "six", "seven", "eight",
@@ -50,34 +54,22 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
     df["appliance_score"] = 0
     for col in appliance_cols:
-        if col in df.columns:
-            df["appliance_score"] += df[col]
-
+        df["appliance_score"] += df[col]
 
     # -----------------------------
     # FEATURE 4: luxury score
     # -----------------------------
-    luxury_cols = ["fifteen", "sixteen"]
-
-    df["luxury_score"] = 0
-    for col in luxury_cols:
-        if col in df.columns:
-            df["luxury_score"] += df[col]
-
+    df["luxury_score"] = df.get("fifteen", 0) + df.get("sixteen", 0)
 
     # -----------------------------
-    # FEATURE 5: interaction feature (IMPORTANT IMPROVEMENT)
+    # FEATURE 5: interaction feature
     # -----------------------------
-    if "people_per_room" in df.columns:
-        df["density_appliance_interaction"] = (
-            df["people_per_room"] * df["appliance_score"]
-        )
-    else:
-        df["density_appliance_interaction"] = 0
-
+    df["density_appliance_interaction"] = (
+        df["people_per_room"] * df["appliance_score"]
+    )
 
     # -----------------------------
-    # CLEANUP: NaN handling
+    # CLEANUP (IMPORTANT)
     # -----------------------------
     df.replace([np.inf, -np.inf], 0, inplace=True)
     df.fillna(0, inplace=True)

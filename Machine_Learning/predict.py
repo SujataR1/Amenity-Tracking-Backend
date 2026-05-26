@@ -2,18 +2,20 @@
 
 import pandas as pd
 import numpy as np
-import pickle
 import torch
 
-from Machine_Learning.model_loader import load_model
+from Machine_Learning.Methods import ConsumptionModel
+from Machine_Learning.constants import MODEL_PATH
+
+import pickle
+import json
 
 
 # ----------------------------
-# Load artifacts (same as training)
+# LOAD ARTIFACTS
 # ----------------------------
 SCALER_PATH = "Machine_Learning/model_versions/scaler.pkl"
 FEATURES_PATH = "Machine_Learning/model_versions/features.json"
-USER_MAPPING_PATH = "Machine_Learning/model_versions/user_id_mapping.pkl"
 
 
 def load_artifacts():
@@ -21,46 +23,62 @@ def load_artifacts():
         scaler = pickle.load(f)
 
     with open(FEATURES_PATH, "r") as f:
-        feature_names = __import__("json").load(f)
+        feature_names = json.load(f)
 
-    with open(USER_MAPPING_PATH, "rb") as f:
-        user_mapping = pickle.load(f)
-
-    return scaler, feature_names, user_mapping
+    return scaler, feature_names
 
 
 # ----------------------------
-# Feature builder (must match training)
+# FEATURE ENGINEERING (must match training)
 # ----------------------------
 def build_features(df: pd.DataFrame):
-    # basic feature engineering (same logic as Methods.py intent)
-    df["people_per_room"] = df["one"] / (df["three"] + 1)
 
+    df["people_per_room"] = df["one"] / (df["three"].replace(0, 1))
     df["vacation_factor"] = df["eighteen"] * 0.1
 
     df["appliance_score"] = (
-        df["four"] + df["five"] + df["six"] + df["seven"] +
-        df["eight"] + df["nine"] + df["ten"] + df["eleven"] +
-        df["twelve"] + df["thirteen"]
+        df.get("four", 0) + df.get("five", 0) + df.get("six", 0) +
+        df.get("seven", 0) + df.get("eight", 0) + df.get("nine", 0) +
+        df.get("ten", 0) + df.get("eleven", 0) + df.get("twelve", 0) +
+        df.get("thirteen", 0)
     )
 
-    df["luxury_score"] = df["fifteen"] + df["sixteen"]
+    df["luxury_score"] = df.get("fifteen", 0) + df.get("sixteen", 0)
 
     return df
 
 
 # ----------------------------
-# Main prediction function
+# MODEL LOADER (PYTORCH FIXED)
+# ----------------------------
+def load_model(input_dim, num_users=1):
+
+    model = ConsumptionModel(
+        num_users=num_users,
+        input_dim=input_dim,
+        hidden_dim1=128,
+        hidden_dim2=64,
+        embedding_dim=32,
+        dropout_rate=0.2
+    )
+
+    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+    model.eval()
+
+    return model
+
+
+# ----------------------------
+# MAIN PREDICTION FUNCTION
 # ----------------------------
 def predict_consumption(input_data: dict):
 
-    model = load_model()
-    scaler, feature_names, user_mapping = load_artifacts()
+    scaler, feature_names = load_artifacts()
 
     df = pd.DataFrame([input_data])
 
     # ----------------------------
-    # Convert booleans → int
+    # BOOLEAN CONVERSION
     # ----------------------------
     bool_cols = [
         "four", "five", "six", "seven", "eight",
@@ -69,38 +87,29 @@ def predict_consumption(input_data: dict):
     ]
 
     for col in bool_cols:
-        if col in df.columns:
-            df[col] = df[col].astype(int)
+        df[col] = df.get(col, 0).astype(int)
 
     # ----------------------------
-    # Convert climate
+    # CLIMATE ENCODING
     # ----------------------------
-    climate_map = {
-        "hot": 2,
-        "moderate": 1,
-        "cold": 0
-    }
+    climate_map = {"hot": 2, "moderate": 1, "cold": 0}
 
-    if "nineteen" in df.columns:
-        df["nineteen"] = df["nineteen"].map(climate_map).fillna(1)
+    df["nineteen"] = df.get("nineteen", "moderate")
+    df["nineteen"] = df["nineteen"].map(climate_map).fillna(1)
 
     # ----------------------------
-    # Feature engineering
+    # DEFAULTS
+    # ----------------------------
+    df["month"] = df.get("month", 1)
+    df["seventeen"] = df.get("seventeen", 1)
+
+    # ----------------------------
+    # FEATURE ENGINEERING
     # ----------------------------
     df = build_features(df)
 
     # ----------------------------
-    # Encode month/climate if missing in input
-    # (safe fallback)
-    # ----------------------------
-    if "month" not in df.columns:
-        df["month"] = 1
-
-    if "seventeen" not in df.columns:
-        df["seventeen"] = 1
-
-    # ----------------------------
-    # One-hot encoding (same as training)
+    # ONE HOT ENCODING
     # ----------------------------
     df = pd.get_dummies(
         df,
@@ -110,25 +119,28 @@ def predict_consumption(input_data: dict):
     )
 
     # ----------------------------
-    # Align features EXACTLY with training
+    # ALIGN FEATURES
     # ----------------------------
     df = df.reindex(columns=feature_names, fill_value=0)
 
     # ----------------------------
-    # Scale features
+    # SCALE
     # ----------------------------
     X_scaled = scaler.transform(df)
-
     X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
 
     # ----------------------------
-    # Predict
+    # LOAD MODEL (SAFE)
     # ----------------------------
-    model.eval()
-    with torch.no_grad():
-        prediction = model(X_tensor).numpy()[0][0]
+    model = load_model(input_dim=X_tensor.shape[1])
 
-    # reverse log1p if training used it
+    # ----------------------------
+    # PREDICT
+    # ----------------------------
+    with torch.no_grad():
+        prediction = model(X_tensor).cpu().numpy()[0][0]
+
+    # reverse log1p if used in training
     prediction = np.expm1(prediction)
 
     return {
@@ -137,7 +149,7 @@ def predict_consumption(input_data: dict):
 
 
 # ----------------------------
-# Test run
+# TEST
 # ----------------------------
 if __name__ == "__main__":
 
