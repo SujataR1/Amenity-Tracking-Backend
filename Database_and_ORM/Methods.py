@@ -36,5 +36,8 @@ async def init_db():
             },
         }
     )
+
+    await Tortoise.generate_schemas()
+
 async def close_db():
     await Tortoise.close_connections()
