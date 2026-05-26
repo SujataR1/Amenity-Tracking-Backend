@@ -11,58 +11,63 @@ from Machine_Learning.constants import (
 
 
 # =========================================================
-# LOAD TRAINED XGBOOST MODEL
+# LOAD TRAINED MODEL
 # =========================================================
 def load_model():
 
-    # -----------------------------------------------------
-    # CHECK MODEL EXISTS
-    # -----------------------------------------------------
     if not os.path.exists(MODEL_PATH):
-
         raise FileNotFoundError(
             f"Model file not found at:\n{MODEL_PATH}"
         )
 
-    # -----------------------------------------------------
-    # LOAD MODEL
-    # -----------------------------------------------------
     model = joblib.load(MODEL_PATH)
 
     return model
 
 
 # =========================================================
-# LOAD FEATURE NAMES
+# LOAD FEATURE NAMES (ROBUST FORMAT HANDLING)
 # =========================================================
 def load_feature_names():
 
-    # -----------------------------------------------------
-    # CHECK FEATURES FILE EXISTS
-    # -----------------------------------------------------
     if not os.path.exists(FEATURES_PATH):
-
         raise FileNotFoundError(
             f"Features file not found at:\n{FEATURES_PATH}"
         )
 
-    # -----------------------------------------------------
-    # LOAD FEATURES
-    # -----------------------------------------------------
     with open(FEATURES_PATH, "r") as f:
+        data = json.load(f)
 
-        feature_names = json.load(f)
+    # =====================================================
+    # HANDLE BOTH OLD + NEW FORMATS SAFELY
+    # =====================================================
+
+    # NEW FORMAT: {"features": [...]}
+    if isinstance(data, dict) and "features" in data:
+        feature_names = data["features"]
+
+    # OLD FORMAT: [...]
+    elif isinstance(data, list):
+        feature_names = data
+
+    else:
+        raise ValueError(
+            "Invalid feature file format. Expected dict with 'features' or list."
+        )
+
+    # Safety check
+    if not feature_names:
+        raise ValueError("Feature list is empty.")
 
     return feature_names
 
 
 # =========================================================
-# LOAD ALL MODEL ARTIFACTS
+# LOAD ALL ARTIFACTS
 # =========================================================
 def load_model_artifacts():
 
     model = load_model()
-
     feature_names = load_feature_names()
 
     return {
@@ -72,7 +77,7 @@ def load_model_artifacts():
 
 
 # =========================================================
-# TEST
+# TEST BLOCK
 # =========================================================
 if __name__ == "__main__":
 
@@ -80,23 +85,12 @@ if __name__ == "__main__":
 
     print("\n========== MODEL ARTIFACTS ==========\n")
 
-    print(
-        "Model Loaded Successfully:"
-    )
+    print("Model Loaded Successfully:")
+    print(type(artifacts["model"]))
 
-    print(
-        type(artifacts["model"])
-    )
-
-    print(
-        f"\nTotal Features: "
-        f"{len(artifacts['feature_names'])}"
-    )
+    print(f"\nTotal Features: {len(artifacts['feature_names'])}")
 
     print("\nFirst 10 Features:\n")
-
-    print(
-        artifacts["feature_names"][:10]
-    )
+    print(artifacts["feature_names"][:10])
 
     print("\n====================================\n")

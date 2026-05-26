@@ -1,4 +1,5 @@
 # Machine_Learning/train_model.py
+
 import os
 import json
 import joblib
@@ -28,16 +29,14 @@ from Machine_Learning.constants import (
 # =========================================================
 # DATASET PATH
 # =========================================================
-DATASET_PATH = (
-    "Machine_Learning/datasets/"
-    "electricity_sample_data_500_rows.csv"
-)
+DATASET_PATH = "Machine_Learning/datasets/electricity_sample_data_500_rows.csv"
 
 
 # =========================================================
 # LOAD DATASET
 # =========================================================
 def load_dataset():
+
     if not os.path.exists(DATASET_PATH):
         raise FileNotFoundError(f"Dataset not found at: {DATASET_PATH}")
 
@@ -49,9 +48,10 @@ def load_dataset():
 
 
 # =========================================================
-# OUTLIER REMOVAL (SAFE VERSION)
+# OUTLIER HANDLING (TRAIN ONLY SAFE VERSION)
 # =========================================================
-def remove_outliers_train_only(df, target_column):
+def remove_outliers(df, target_column):
+
     df = df.copy()
 
     lower = df[target_column].quantile(0.01)
@@ -63,17 +63,17 @@ def remove_outliers_train_only(df, target_column):
 
 
 # =========================================================
-# FEATURE PIPELINE (LEAKAGE SAFE ORDER)
+# DATA PREPARATION PIPELINE (FIXED ORDER + SAFE SPLIT)
 # =========================================================
 def prepare_data(df):
 
     print("\nRunning preprocessing pipeline...")
     df = preprocess_dataframe(df)
 
-    # -----------------------------------------------------
-    # SPLIT FIRST (IMPORTANT FIX)
-    # -----------------------------------------------------
-    print("\nSplitting BEFORE feature engineering (FIX)...")
+    # =====================================================
+    # SPLIT DATA FIRST (NO LEAKAGE)
+    # =====================================================
+    print("\nSplitting dataset...")
 
     train_df, test_df = train_test_split(
         df,
@@ -81,24 +81,24 @@ def prepare_data(df):
         random_state=RANDOM_STATE,
     )
 
-    # -----------------------------------------------------
-    # FEATURE ENGINEERING (TRAIN)
-    # -----------------------------------------------------
+    # =====================================================
+    # FEATURE ENGINEERING
+    # =====================================================
     print("\nFeature engineering (train)...")
     train_df = create_features(train_df)
 
     print("\nFeature engineering (test)...")
     test_df = create_features(test_df)
 
-    # -----------------------------------------------------
-    # OUTLIERS ONLY ON TRAIN
-    # -----------------------------------------------------
-    train_df = remove_outliers_train_only(train_df, TARGET_COLUMN)
-    test_df = remove_outliers_train_only(test_df, TARGET_COLUMN)
+    # =====================================================
+    # OUTLIER HANDLING (TRAIN ONLY LOGIC)
+    # =====================================================
+    train_df = remove_outliers(train_df, TARGET_COLUMN)
+    test_df = remove_outliers(test_df, TARGET_COLUMN)
 
-    # -----------------------------------------------------
-    # LOG TRANSFORM TARGET
-    # -----------------------------------------------------
+    # =====================================================
+    # TARGET TRANSFORM
+    # =====================================================
     print("\nApplying log transform...")
 
     y_train = np.log1p(train_df[TARGET_COLUMN])
@@ -107,67 +107,71 @@ def prepare_data(df):
     X_train = train_df.drop(columns=[TARGET_COLUMN])
     X_test = test_df.drop(columns=[TARGET_COLUMN])
 
-    # -----------------------------------------------------
-    # ONE HOT ENCODING (CONSISTENT FIX)
-    # -----------------------------------------------------
+    # =====================================================
+    # ONE HOT ENCODING
+    # =====================================================
     X_train = pd.get_dummies(X_train)
     X_test = pd.get_dummies(X_test)
 
-    # align columns (VERY IMPORTANT FIX)
-    X_train, X_test = X_train.align(X_test, join="left", axis=1, fill_value=0)
+    # ALIGN COLUMNS (CRITICAL FIX)
+    X_train, X_test = X_train.align(
+        X_test,
+        join="left",
+        axis=1,
+        fill_value=0
+    )
 
-    # -----------------------------------------------------
+    # =====================================================
     # CLEANUP
-    # -----------------------------------------------------
+    # =====================================================
     X_train.replace([np.inf, -np.inf], 0, inplace=True)
     X_test.replace([np.inf, -np.inf], 0, inplace=True)
 
     X_train.fillna(0, inplace=True)
     X_test.fillna(0, inplace=True)
 
-    # -----------------------------------------------------
-    # SAVE FEATURES
-    # -----------------------------------------------------
+    # =====================================================
+    # SAVE FEATURE ORDER (CRITICAL FOR DEPLOYMENT)
+    # =====================================================
     os.makedirs(MODEL_DIRECTORY, exist_ok=True)
 
-    with open(FEATURES_PATH, "w") as f:
-        json.dump(X_train.columns.tolist(), f)
+    feature_list = {
+        "features": X_train.columns.tolist()
+    }
 
-    print("\nFeature names saved.")
+    with open(FEATURES_PATH, "w") as f:
+        json.dump(feature_list, f, indent=4)
+
+    print("\nFeature names saved successfully.")
 
     return X_train, X_test, y_train, y_test
 
 
 # =========================================================
-# MODEL
+# MODEL BUILDING
 # =========================================================
 def build_model():
+
     print("\nBuilding XGBoost model...")
 
     return XGBRegressor(
         objective="reg:squarederror",
 
-        # -------------------------------------------------
-        # FIX: reduce overfitting
-        # -------------------------------------------------
         n_estimators=300,
         learning_rate=0.05,
-
         max_depth=4,
-        min_child_weight=5,
 
+        min_child_weight=5,
         subsample=0.8,
         colsample_bytree=0.8,
 
-        # -------------------------------------------------
-        # REGULARIZATION (IMPORTANT)
-        # -------------------------------------------------
         reg_alpha=0.1,
         reg_lambda=2.0,
 
         random_state=RANDOM_STATE,
         n_jobs=-1,
     )
+
 
 # =========================================================
 # TRAIN MODEL
@@ -185,22 +189,19 @@ def train_model():
 
     print("\nTraining completed.")
 
-    # -----------------------------------------------------
+    # =====================================================
     # PREDICTIONS
-    # -----------------------------------------------------
+    # =====================================================
     preds = model.predict(X_test)
 
     preds_actual = np.expm1(preds)
     y_test_actual = np.expm1(y_test)
 
-    # -----------------------------------------------------
+    # =====================================================
     # EVALUATION
-    # -----------------------------------------------------
+    # =====================================================
     metrics = evaluate_model(y_test_actual, preds_actual)
 
-    # -----------------------------------------------------
-    # REAL SCORES (NOT FAKE ACCURACY)
-    # -----------------------------------------------------
     train_r2 = model.score(X_train, y_train)
     test_r2 = model.score(X_test, y_test)
 
@@ -209,9 +210,9 @@ def train_model():
     print(f"Test R2  : {test_r2:.4f}")
     print("\n=======================================\n")
 
-    # -----------------------------------------------------
-    # CROSS VALIDATION (SAFE VERSION)
-    # -----------------------------------------------------
+    # =====================================================
+    # CROSS VALIDATION
+    # =====================================================
     print("\nRunning Cross Validation...\n")
 
     cv_scores = cross_val_score(
@@ -226,18 +227,18 @@ def train_model():
     print("CV Scores:", cv_scores)
     print("Average CV:", cv_scores.mean())
 
-    # -----------------------------------------------------
+    # =====================================================
     # SAVE MODEL
-    # -----------------------------------------------------
+    # =====================================================
     print("\nSaving model...")
 
     joblib.dump(model, MODEL_PATH)
 
     print(f"\nModel saved at: {MODEL_PATH}")
 
-    # -----------------------------------------------------
+    # =====================================================
     # FEATURE IMPORTANCE
-    # -----------------------------------------------------
+    # =====================================================
     importance = pd.DataFrame({
         "feature": X_train.columns,
         "importance": model.feature_importances_,

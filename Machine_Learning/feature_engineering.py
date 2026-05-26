@@ -1,4 +1,5 @@
 # Machine_Learning/feature_engineering.py
+
 import pandas as pd
 import numpy as np
 
@@ -7,11 +8,12 @@ import numpy as np
 # SAFE BOOLEAN CONVERSION
 # =========================================================
 def safe_bool(value):
+
     if pd.isna(value):
         return 0
 
     if isinstance(value, str):
-        return 1 if value.lower() in ["true", "1", "yes", "y"] else 0
+        return 1 if value.strip().lower() in ["true", "1", "yes", "y", "on"] else 0
 
     return int(bool(value))
 
@@ -20,6 +22,7 @@ def safe_bool(value):
 # SAFE CLIMATE ENCODING
 # =========================================================
 def encode_climate(value):
+
     climate_map = {
         "cold": 0,
         "moderate": 1,
@@ -29,17 +32,20 @@ def encode_climate(value):
     if pd.isna(value):
         return 1
 
-    return climate_map.get(str(value).lower(), 1)
+    return climate_map.get(str(value).strip().lower(), 1)
 
 
 # =========================================================
 # CYCLICAL MONTH ENCODING
 # =========================================================
 def add_month_cyclical_features(df: pd.DataFrame):
+
     df = df.copy()
 
     if "month" not in df.columns:
         df["month"] = 1
+
+    df["month"] = pd.to_numeric(df["month"], errors="coerce").fillna(1)
 
     df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
     df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
@@ -48,19 +54,28 @@ def add_month_cyclical_features(df: pd.DataFrame):
 
 
 # =========================================================
-# MAIN FEATURE ENGINEERING PIPELINE (LEAKAGE SAFE)
+# MAIN FEATURE ENGINEERING PIPELINE (UPDATED FOR NEW SCHEMA)
 # =========================================================
 def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
     # =====================================================
-    # BOOLEAN COLUMNS
+    # BOOLEAN COLUMNS (UPDATED TO NEW BACKEND SCHEMA)
     # =====================================================
     bool_cols = [
-        "four", "five", "six", "seven", "eight",
-        "nine", "ten", "eleven", "twelve",
-        "thirteen", "fifteen", "sixteen"
+        "has_ac",
+        "has_geyser",
+        "has_iron",
+        "has_washing_machine",
+        "has_dishwasher",
+        "has_induction",
+        "has_microwave",
+        "has_kettle",
+        "has_vacuum",
+        "has_room_heater",
+        "has_pool",
+        "has_garden",
     ]
 
     for col in bool_cols:
@@ -70,61 +85,64 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = 0
 
     # =====================================================
-    # NUMERIC COLUMNS
+    # NUMERIC COLUMNS (NEW SCHEMA)
     # =====================================================
     numeric_defaults = {
-        "one": 1,
-        "two": 0,
-        "three": 1,
-        "fourteen": 0,
-        "eighteen": 0,
+        "num_people": 1,
+        "num_children": 0,
+        "bedrooms": 1,
+        "home_area": 0,
+        "vacation_days": 0,
         "month": 1,
         "year": 2025,
     }
 
     for col, default in numeric_defaults.items():
+
         if col not in df.columns:
             df[col] = default
 
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(default)
 
     # =====================================================
-    # CLIMATE ENCODING
+    # CLIMATE ENCODING (NEW COLUMN NAME)
     # =====================================================
-    if "nineteen" in df.columns:
-        df["nineteen"] = df["nineteen"].apply(encode_climate)
+    if "climate" in df.columns:
+        df["climate"] = df["climate"].apply(encode_climate)
     else:
-        df["nineteen"] = 1
+        df["climate"] = 1
 
     # =====================================================
-    # SAFE FEATURE ENGINEERING
+    # ENGINEERED FEATURES (UPDATED LOGIC)
     # =====================================================
 
-    # People density
-    df["people_per_room"] = df["one"] / df["three"].replace(0, 1)
+    df["people_per_room"] = df["num_people"] / df["bedrooms"].replace(0, 1)
 
-    # Children ratio
-    df["children_ratio"] = df["two"] / df["one"].replace(0, 1)
+    df["children_ratio"] = df["num_children"] / df["num_people"].replace(0, 1)
 
-    # Vacation impact (simple scaling only)
-    df["vacation_factor"] = df["eighteen"] * 0.1
+    df["vacation_factor"] = df["vacation_days"] * 0.1
 
-    # Appliance usage score
     appliance_cols = [
-        "four", "five", "six", "seven", "eight",
-        "nine", "ten", "eleven", "twelve", "thirteen"
+        "has_ac",
+        "has_geyser",
+        "has_iron",
+        "has_washing_machine",
+        "has_dishwasher",
+        "has_induction",
+        "has_microwave",
+        "has_kettle",
+        "has_vacuum",
+        "has_room_heater",
     ]
 
     df["appliance_score"] = df[appliance_cols].sum(axis=1)
 
-    # Luxury score
-    df["luxury_score"] = df["fifteen"] + df["sixteen"]
+    df["luxury_score"] = df["has_pool"] + df["has_garden"]
 
-    # Area per person
-    df["area_per_person"] = df["fourteen"] / df["one"].replace(0, 1)
+    df["area_per_person"] = df["home_area"] / df["num_people"].replace(0, 1)
 
     # =====================================================
-    # SAFE INTERACTIONS (NO TARGET LEAKAGE)
+    # INTERACTIONS (SAFE, NO LEAKAGE)
     # =====================================================
 
     df["density_appliance_interaction"] = (
@@ -132,7 +150,7 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     df["climate_appliance_interaction"] = (
-        df["nineteen"] * df["appliance_score"]
+        df["climate"] * df["appliance_score"]
     )
 
     df["area_appliance_interaction"] = (
@@ -140,12 +158,13 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # =====================================================
-    # SIMPLIFIED RISK SCORE (NO HARD WEIGHTS)
+    # RISK SCORE (HEURISTIC FEATURE)
     # =====================================================
+
     df["high_consumption_risk"] = (
         df["appliance_score"] +
         df["luxury_score"] +
-        df["nineteen"] +
+        df["climate"] +
         df["people_per_room"]
     )
 
@@ -155,25 +174,7 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     df = add_month_cyclical_features(df)
 
     # =====================================================
-    # IMPORTANT FIX:
-    # REMOVE TARGET-BASED FEATURES (LEAKAGE FIX)
-    # =====================================================
-    leakage_cols = [
-        "consumption_growth_rate",
-        "last_month_consumption",
-        "avg_last_3_months",
-        "avg_last_6_months",
-        "yearly_avg_consumption",
-        "max_historical_consumption",
-        "min_historical_consumption",
-    ]
-
-    for col in leakage_cols:
-        if col in df.columns:
-            df.drop(columns=[col], inplace=True)
-
-    # =====================================================
-    # FINAL CLEANUP
+    # CLEANUP
     # =====================================================
     df.replace([np.inf, -np.inf], 0, inplace=True)
     df.fillna(0, inplace=True)

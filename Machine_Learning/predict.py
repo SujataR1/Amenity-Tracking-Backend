@@ -10,13 +10,8 @@ from Machine_Learning.constants import (
     FEATURES_PATH,
 )
 
-from Machine_Learning.preprocessing import (
-    preprocess_dataframe,
-)
-
-from Machine_Learning.feature_engineering import (
-    create_features,
-)
+from Machine_Learning.preprocessing import preprocess_dataframe
+from Machine_Learning.feature_engineering import create_features
 
 
 # =========================================================
@@ -26,30 +21,14 @@ def calculate_electricity_bill(units: float):
 
     units = max(units, 0)
 
-    # -----------------------------------------------------
-    # SAMPLE SLAB LOGIC
-    # -----------------------------------------------------
     if units <= 100:
-
         bill = units * 5
 
     elif units <= 300:
-
-        bill = (
-            (100 * 5)
-            +
-            ((units - 100) * 7)
-        )
+        bill = (100 * 5) + ((units - 100) * 7)
 
     else:
-
-        bill = (
-            (100 * 5)
-            +
-            (200 * 7)
-            +
-            ((units - 300) * 10)
-        )
+        bill = (100 * 5) + (200 * 7) + ((units - 300) * 10)
 
     return round(float(bill), 2)
 
@@ -58,10 +37,7 @@ def calculate_electricity_bill(units: float):
 # LOAD MODEL
 # =========================================================
 def load_model():
-
-    model = joblib.load(MODEL_PATH)
-
-    return model
+    return joblib.load(MODEL_PATH)
 
 
 # =========================================================
@@ -70,55 +46,53 @@ def load_model():
 def load_feature_names():
 
     with open(FEATURES_PATH, "r") as f:
+        data = json.load(f)
 
-        feature_names = json.load(f)
+    # supports both formats safely
+    if isinstance(data, dict) and "features" in data:
+        return data["features"]
 
-    return feature_names
+    return data
 
 
 # =========================================================
-# PREPARE INPUT DATAFRAME
+# PREPARE INPUT DATAFRAME (UPDATED SCHEMA)
 # =========================================================
-def prepare_input_dataframe(
-    input_data: dict,
-) -> pd.DataFrame:
+def prepare_input_dataframe(input_data: dict) -> pd.DataFrame:
 
     df = pd.DataFrame([input_data])
 
-    # -----------------------------------------------------
-    # REQUIRED DEFAULTS
-    # -----------------------------------------------------
+    # =====================================================
+    # UPDATED DEFAULT SCHEMA (NEW BACKEND FIELDS)
+    # =====================================================
     defaults = {
-        "one": 0,
-        "two": 0,
-        "three": 1,
-        "four": 0,
-        "five": 0,
-        "six": 0,
-        "seven": 0,
-        "eight": 0,
-        "nine": 0,
-        "ten": 0,
-        "eleven": 0,
-        "twelve": 0,
-        "thirteen": 0,
-        "fourteen": 0,
-        "fifteen": 0,
-        "sixteen": 0,
-        "seventeen": "january",
-        "eighteen": 0,
-        "nineteen": "moderate",
+        "num_people": 0,
+        "num_children": 0,
+        "bedrooms": 1,
+        "home_area": 0,
+
+        "has_ac": 0,
+        "has_geyser": 0,
+        "has_iron": 0,
+        "has_washing_machine": 0,
+        "has_dishwasher": 0,
+        "has_induction": 0,
+        "has_microwave": 0,
+        "has_kettle": 0,
+        "has_vacuum": 0,
+        "has_room_heater": 0,
+        "has_pool": 0,
+        "has_garden": 0,
+
+        "vacation_days": 0,
+        "climate": "moderate",
+
         "month": 1,
         "year": 2025,
     }
 
-    # -----------------------------------------------------
-    # ENSURE ALL COLUMNS EXIST
-    # -----------------------------------------------------
     for col, default_value in defaults.items():
-
         if col not in df.columns:
-
             df[col] = default_value
 
     return df
@@ -127,34 +101,11 @@ def prepare_input_dataframe(
 # =========================================================
 # ALIGN FEATURES
 # =========================================================
-def align_features(
-    df: pd.DataFrame,
-    feature_names: list,
-) -> pd.DataFrame:
+def align_features(df: pd.DataFrame, feature_names: list) -> pd.DataFrame:
 
-    # -----------------------------------------------------
-    # ONE HOT ENCODING
-    # -----------------------------------------------------
-    categorical_columns = []
+    df = pd.get_dummies(df)
 
-    if "seventeen" in df.columns:
-        categorical_columns.append("seventeen")
-
-    if categorical_columns:
-
-        df = pd.get_dummies(
-            df,
-            columns=categorical_columns,
-            drop_first=False,
-        )
-
-    # -----------------------------------------------------
-    # ALIGN TO TRAINING FEATURES
-    # -----------------------------------------------------
-    df = df.reindex(
-        columns=feature_names,
-        fill_value=0,
-    )
+    df = df.reindex(columns=feature_names, fill_value=0)
 
     return df
 
@@ -162,93 +113,60 @@ def align_features(
 # =========================================================
 # MAIN PREDICTION FUNCTION
 # =========================================================
-def predict_consumption(
-    input_data: dict,
-):
+def predict_consumption(input_data: dict):
 
     # -----------------------------------------------------
     # LOAD MODEL + FEATURES
     # -----------------------------------------------------
     model = load_model()
-
     feature_names = load_feature_names()
 
     # -----------------------------------------------------
-    # CREATE DATAFRAME
+    # BUILD INPUT
     # -----------------------------------------------------
-    df = prepare_input_dataframe(
-        input_data,
-    )
+    df = prepare_input_dataframe(input_data)
 
     # -----------------------------------------------------
-    # PREPROCESSING
+    # PREPROCESS PIPELINE
     # -----------------------------------------------------
     df = preprocess_dataframe(df)
-
-    # -----------------------------------------------------
-    # FEATURE ENGINEERING
-    # -----------------------------------------------------
     df = create_features(df)
 
     # -----------------------------------------------------
-    # FEATURE ALIGNMENT
+    # ALIGN FEATURES (CRITICAL)
     # -----------------------------------------------------
-    df = align_features(
-        df,
-        feature_names,
-    )
+    df = align_features(df, feature_names)
 
     # -----------------------------------------------------
     # PREDICTION
     # -----------------------------------------------------
-    prediction = model.predict(df)[0]
+    prediction_log = model.predict(df)[0]
 
-    # -----------------------------------------------------
-    # REVERSE LOG TRANSFORM
-    # -----------------------------------------------------
-    prediction = np.expm1(prediction)
+    prediction = np.expm1(prediction_log)
 
-    # -----------------------------------------------------
-    # SAFETY
-    # -----------------------------------------------------
     prediction = max(prediction, 0)
 
     # -----------------------------------------------------
     # BILL ESTIMATION
     # -----------------------------------------------------
-    estimated_bill = calculate_electricity_bill(
-        prediction,
-    )
+    estimated_bill = calculate_electricity_bill(prediction)
 
     # -----------------------------------------------------
-    # CONSUMPTION LEVEL
+    # USAGE LEVEL
     # -----------------------------------------------------
     if prediction < 200:
-
         usage_level = "Low"
-
     elif prediction < 500:
-
         usage_level = "Moderate"
-
     else:
-
         usage_level = "High"
 
     # -----------------------------------------------------
     # RESPONSE
     # -----------------------------------------------------
     return {
-        "predicted_electricity_consumption": round(
-            float(prediction),
-            2,
-        ),
-
-        "estimated_bill_amount": round(
-            float(estimated_bill),
-            2,
-        ),
-
+        "predicted_electricity_consumption": round(float(prediction), 2),
+        "estimated_bill_amount": round(float(estimated_bill), 2),
         "usage_level": usage_level,
     }
 
@@ -259,72 +177,33 @@ def predict_consumption(
 if __name__ == "__main__":
 
     sample_input = {
+        "num_people": 5,
+        "num_children": 2,
+        "bedrooms": 3,
 
-        # -------------------------------------------------
-        # QUESTIONNAIRE DATA
-        # -------------------------------------------------
-        "one": 5,
-        "two": 2,
-        "three": 3,
+        "has_ac": True,
+        "has_geyser": True,
+        "has_washing_machine": True,
+        "has_dishwasher": False,
+        "has_induction": True,
+        "has_microwave": True,
+        "has_kettle": True,
+        "has_vacuum": False,
+        "has_room_heater": False,
 
-        # -------------------------------------------------
-        # APPLIANCES
-        # -------------------------------------------------
-        "four": True,
-        "five": True,
-        "six": True,
-        "seven": True,
-        "eight": False,
-        "nine": True,
-        "ten": True,
-        "eleven": True,
-        "twelve": False,
-        "thirteen": False,
+        "home_area": 1400,
+        "has_pool": False,
+        "has_garden": True,
 
-        # -------------------------------------------------
-        # HOME DETAILS
-        # -------------------------------------------------
-        "fourteen": 1400,
+        "vacation_days": 10,
+        "climate": "hot",
 
-        "fifteen": False,
-        "sixteen": True,
-
-        # -------------------------------------------------
-        # VACATION
-        # -------------------------------------------------
-        "seventeen": "june",
-
-        "eighteen": 10,
-
-        # -------------------------------------------------
-        # CLIMATE
-        # -------------------------------------------------
-        "nineteen": "hot",
-
-        # -------------------------------------------------
-        # TIME
-        # -------------------------------------------------
         "month": 6,
         "year": 2025,
-
-        # -------------------------------------------------
-        # OPTIONAL HISTORICAL FEATURES
-        # -------------------------------------------------
-        "last_month_consumption": 420,
-
-        "avg_last_3_months": 410,
-
-        "avg_last_6_months": 395,
-
-        "consumption_growth_rate": 0.08,
     }
 
-    result = predict_consumption(
-        sample_input,
-    )
+    result = predict_consumption(sample_input)
 
-    print("\n========== PREDICTION ==========")
-
+    print("\n========== PREDICTION ==========\n")
     print(json.dumps(result, indent=4))
-
-    print("================================\n")
+    print("\n================================\n")
