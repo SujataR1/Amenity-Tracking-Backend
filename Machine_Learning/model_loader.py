@@ -1,49 +1,102 @@
 # Machine_Learning/model_loader.py
 
-import torch
-from Machine_Learning.Methods import ConsumptionModel
-from Machine_Learning.constants import MODEL_PATH
-import pickle
+import os
+import json
+import joblib
+
+from Machine_Learning.constants import (
+    MODEL_PATH,
+    FEATURES_PATH,
+)
 
 
 # =========================================================
-# LOAD USER MAPPING (IMPORTANT FOR EMBEDDING)
+# LOAD TRAINED XGBOOST MODEL
 # =========================================================
-def load_user_map():
-    try:
-        with open("Machine_Learning/model_versions/user_map.pkl", "rb") as f:
-            return pickle.load(f)
-    except FileNotFoundError:
-        return None
+def load_model():
 
+    # -----------------------------------------------------
+    # CHECK MODEL EXISTS
+    # -----------------------------------------------------
+    if not os.path.exists(MODEL_PATH):
 
-# =========================================================
-# LOAD PYTORCH MODEL
-# =========================================================
-def load_model(input_dim=None):
+        raise FileNotFoundError(
+            f"Model file not found at:\n{MODEL_PATH}"
+        )
 
-    user_map = load_user_map()
-    num_users = len(user_map) if user_map else 1
-
-    # -----------------------------
-    # CREATE MODEL STRUCTURE
-    # -----------------------------
-    model = ConsumptionModel(
-        num_users=num_users,
-        input_dim=input_dim if input_dim else 10,  # fallback safety
-        hidden_dim1=128,
-        hidden_dim2=64,
-        embedding_dim=32,
-        dropout_rate=0.2
-    )
-
-    # -----------------------------
-    # LOAD STATE DICT
-    # -----------------------------
-    model.load_state_dict(
-        torch.load(MODEL_PATH, map_location=torch.device("cpu"))
-    )
-
-    model.eval()
+    # -----------------------------------------------------
+    # LOAD MODEL
+    # -----------------------------------------------------
+    model = joblib.load(MODEL_PATH)
 
     return model
+
+
+# =========================================================
+# LOAD FEATURE NAMES
+# =========================================================
+def load_feature_names():
+
+    # -----------------------------------------------------
+    # CHECK FEATURES FILE EXISTS
+    # -----------------------------------------------------
+    if not os.path.exists(FEATURES_PATH):
+
+        raise FileNotFoundError(
+            f"Features file not found at:\n{FEATURES_PATH}"
+        )
+
+    # -----------------------------------------------------
+    # LOAD FEATURES
+    # -----------------------------------------------------
+    with open(FEATURES_PATH, "r") as f:
+
+        feature_names = json.load(f)
+
+    return feature_names
+
+
+# =========================================================
+# LOAD ALL MODEL ARTIFACTS
+# =========================================================
+def load_model_artifacts():
+
+    model = load_model()
+
+    feature_names = load_feature_names()
+
+    return {
+        "model": model,
+        "feature_names": feature_names,
+    }
+
+
+# =========================================================
+# TEST
+# =========================================================
+if __name__ == "__main__":
+
+    artifacts = load_model_artifacts()
+
+    print("\n========== MODEL ARTIFACTS ==========\n")
+
+    print(
+        "Model Loaded Successfully:"
+    )
+
+    print(
+        type(artifacts["model"])
+    )
+
+    print(
+        f"\nTotal Features: "
+        f"{len(artifacts['feature_names'])}"
+    )
+
+    print("\nFirst 10 Features:\n")
+
+    print(
+        artifacts["feature_names"][:10]
+    )
+
+    print("\n====================================\n")

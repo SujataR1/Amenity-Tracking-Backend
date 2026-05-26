@@ -1,162 +1,275 @@
 # Machine_Learning/predict.py
 
+import json
+import joblib
 import pandas as pd
 import numpy as np
-import torch
 
-from Machine_Learning.Methods import ConsumptionModel
-from Machine_Learning.constants import MODEL_PATH
+from Machine_Learning.constants import (
+    MODEL_PATH,
+    FEATURES_PATH,
+)
 
-import pickle
-import json
+from Machine_Learning.preprocessing import (
+    preprocess_dataframe,
+)
 
-
-# ----------------------------
-# LOAD ARTIFACTS
-# ----------------------------
-SCALER_PATH = "Machine_Learning/model_versions/scaler.pkl"
-FEATURES_PATH = "Machine_Learning/model_versions/features.json"
-
-
-def load_artifacts():
-    with open(SCALER_PATH, "rb") as f:
-        scaler = pickle.load(f)
-
-    with open(FEATURES_PATH, "r") as f:
-        feature_names = json.load(f)
-
-    return scaler, feature_names
+from Machine_Learning.feature_engineering import (
+    create_features,
+)
 
 
-# ----------------------------
-# FEATURE ENGINEERING (must match training)
-# ----------------------------
-def build_features(df: pd.DataFrame):
+# =========================================================
+# BILL CALCULATION ENGINE
+# =========================================================
+def calculate_electricity_bill(units: float):
 
-    df["people_per_room"] = df["one"] / (df["three"].replace(0, 1))
-    df["vacation_factor"] = df["eighteen"] * 0.1
+    units = max(units, 0)
 
-    df["appliance_score"] = (
-        df.get("four", 0) + df.get("five", 0) + df.get("six", 0) +
-        df.get("seven", 0) + df.get("eight", 0) + df.get("nine", 0) +
-        df.get("ten", 0) + df.get("eleven", 0) + df.get("twelve", 0) +
-        df.get("thirteen", 0)
-    )
+    # -----------------------------------------------------
+    # SAMPLE SLAB LOGIC
+    # -----------------------------------------------------
+    if units <= 100:
 
-    df["luxury_score"] = df.get("fifteen", 0) + df.get("sixteen", 0)
+        bill = units * 5
 
-    return df
+    elif units <= 300:
+
+        bill = (
+            (100 * 5)
+            +
+            ((units - 100) * 7)
+        )
+
+    else:
+
+        bill = (
+            (100 * 5)
+            +
+            (200 * 7)
+            +
+            ((units - 300) * 10)
+        )
+
+    return round(float(bill), 2)
 
 
-# ----------------------------
-# MODEL LOADER (PYTORCH FIXED)
-# ----------------------------
-def load_model(input_dim, num_users=1):
+# =========================================================
+# LOAD MODEL
+# =========================================================
+def load_model():
 
-    model = ConsumptionModel(
-        num_users=num_users,
-        input_dim=input_dim,
-        hidden_dim1=128,
-        hidden_dim2=64,
-        embedding_dim=32,
-        dropout_rate=0.2
-    )
-
-    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
-    model.eval()
+    model = joblib.load(MODEL_PATH)
 
     return model
 
 
-# ----------------------------
-# MAIN PREDICTION FUNCTION
-# ----------------------------
-def predict_consumption(input_data: dict):
+# =========================================================
+# LOAD FEATURE NAMES
+# =========================================================
+def load_feature_names():
 
-    scaler, feature_names = load_artifacts()
+    with open(FEATURES_PATH, "r") as f:
+
+        feature_names = json.load(f)
+
+    return feature_names
+
+
+# =========================================================
+# PREPARE INPUT DATAFRAME
+# =========================================================
+def prepare_input_dataframe(
+    input_data: dict,
+) -> pd.DataFrame:
 
     df = pd.DataFrame([input_data])
 
-    # ----------------------------
-    # BOOLEAN CONVERSION
-    # ----------------------------
-    bool_cols = [
-        "four", "five", "six", "seven", "eight",
-        "nine", "ten", "eleven", "twelve", "thirteen",
-        "fifteen", "sixteen"
-    ]
+    # -----------------------------------------------------
+    # REQUIRED DEFAULTS
+    # -----------------------------------------------------
+    defaults = {
+        "one": 0,
+        "two": 0,
+        "three": 1,
+        "four": 0,
+        "five": 0,
+        "six": 0,
+        "seven": 0,
+        "eight": 0,
+        "nine": 0,
+        "ten": 0,
+        "eleven": 0,
+        "twelve": 0,
+        "thirteen": 0,
+        "fourteen": 0,
+        "fifteen": 0,
+        "sixteen": 0,
+        "seventeen": "january",
+        "eighteen": 0,
+        "nineteen": "moderate",
+        "month": 1,
+        "year": 2025,
+    }
 
-    for col in bool_cols:
-        df[col] = df.get(col, 0).astype(int)
+    # -----------------------------------------------------
+    # ENSURE ALL COLUMNS EXIST
+    # -----------------------------------------------------
+    for col, default_value in defaults.items():
 
-    # ----------------------------
-    # CLIMATE ENCODING
-    # ----------------------------
-    climate_map = {"hot": 2, "moderate": 1, "cold": 0}
+        if col not in df.columns:
 
-    df["nineteen"] = df.get("nineteen", "moderate")
-    df["nineteen"] = df["nineteen"].map(climate_map).fillna(1)
+            df[col] = default_value
 
-    # ----------------------------
-    # DEFAULTS
-    # ----------------------------
-    df["month"] = df.get("month", 1)
-    df["seventeen"] = df.get("seventeen", 1)
+    return df
 
-    # ----------------------------
-    # FEATURE ENGINEERING
-    # ----------------------------
-    df = build_features(df)
 
-    # ----------------------------
+# =========================================================
+# ALIGN FEATURES
+# =========================================================
+def align_features(
+    df: pd.DataFrame,
+    feature_names: list,
+) -> pd.DataFrame:
+
+    # -----------------------------------------------------
     # ONE HOT ENCODING
-    # ----------------------------
-    df = pd.get_dummies(
-        df,
-        columns=["month", "nineteen", "seventeen"],
-        prefix=["month", "climate", "vacation_month"],
-        drop_first=False
+    # -----------------------------------------------------
+    categorical_columns = []
+
+    if "seventeen" in df.columns:
+        categorical_columns.append("seventeen")
+
+    if categorical_columns:
+
+        df = pd.get_dummies(
+            df,
+            columns=categorical_columns,
+            drop_first=False,
+        )
+
+    # -----------------------------------------------------
+    # ALIGN TO TRAINING FEATURES
+    # -----------------------------------------------------
+    df = df.reindex(
+        columns=feature_names,
+        fill_value=0,
     )
 
-    # ----------------------------
-    # ALIGN FEATURES
-    # ----------------------------
-    df = df.reindex(columns=feature_names, fill_value=0)
+    return df
 
-    # ----------------------------
-    # SCALE
-    # ----------------------------
-    X_scaled = scaler.transform(df)
-    X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
 
-    # ----------------------------
-    # LOAD MODEL (SAFE)
-    # ----------------------------
-    model = load_model(input_dim=X_tensor.shape[1])
+# =========================================================
+# MAIN PREDICTION FUNCTION
+# =========================================================
+def predict_consumption(
+    input_data: dict,
+):
 
-    # ----------------------------
-    # PREDICT
-    # ----------------------------
-    with torch.no_grad():
-        prediction = model(X_tensor).cpu().numpy()[0][0]
+    # -----------------------------------------------------
+    # LOAD MODEL + FEATURES
+    # -----------------------------------------------------
+    model = load_model()
 
-    # reverse log1p if used in training
+    feature_names = load_feature_names()
+
+    # -----------------------------------------------------
+    # CREATE DATAFRAME
+    # -----------------------------------------------------
+    df = prepare_input_dataframe(
+        input_data,
+    )
+
+    # -----------------------------------------------------
+    # PREPROCESSING
+    # -----------------------------------------------------
+    df = preprocess_dataframe(df)
+
+    # -----------------------------------------------------
+    # FEATURE ENGINEERING
+    # -----------------------------------------------------
+    df = create_features(df)
+
+    # -----------------------------------------------------
+    # FEATURE ALIGNMENT
+    # -----------------------------------------------------
+    df = align_features(
+        df,
+        feature_names,
+    )
+
+    # -----------------------------------------------------
+    # PREDICTION
+    # -----------------------------------------------------
+    prediction = model.predict(df)[0]
+
+    # -----------------------------------------------------
+    # REVERSE LOG TRANSFORM
+    # -----------------------------------------------------
     prediction = np.expm1(prediction)
 
+    # -----------------------------------------------------
+    # SAFETY
+    # -----------------------------------------------------
+    prediction = max(prediction, 0)
+
+    # -----------------------------------------------------
+    # BILL ESTIMATION
+    # -----------------------------------------------------
+    estimated_bill = calculate_electricity_bill(
+        prediction,
+    )
+
+    # -----------------------------------------------------
+    # CONSUMPTION LEVEL
+    # -----------------------------------------------------
+    if prediction < 200:
+
+        usage_level = "Low"
+
+    elif prediction < 500:
+
+        usage_level = "Moderate"
+
+    else:
+
+        usage_level = "High"
+
+    # -----------------------------------------------------
+    # RESPONSE
+    # -----------------------------------------------------
     return {
-        "predicted_electricity_consumption": round(float(prediction), 2)
+        "predicted_electricity_consumption": round(
+            float(prediction),
+            2,
+        ),
+
+        "estimated_bill_amount": round(
+            float(estimated_bill),
+            2,
+        ),
+
+        "usage_level": usage_level,
     }
 
 
-# ----------------------------
-# TEST
-# ----------------------------
+# =========================================================
+# TESTING
+# =========================================================
 if __name__ == "__main__":
 
     sample_input = {
+
+        # -------------------------------------------------
+        # QUESTIONNAIRE DATA
+        # -------------------------------------------------
         "one": 5,
         "two": 2,
         "three": 3,
+
+        # -------------------------------------------------
+        # APPLIANCES
+        # -------------------------------------------------
         "four": True,
         "five": True,
         "six": True,
@@ -167,14 +280,51 @@ if __name__ == "__main__":
         "eleven": True,
         "twelve": False,
         "thirteen": False,
+
+        # -------------------------------------------------
+        # HOME DETAILS
+        # -------------------------------------------------
         "fourteen": 1400,
+
         "fifteen": False,
         "sixteen": True,
+
+        # -------------------------------------------------
+        # VACATION
+        # -------------------------------------------------
+        "seventeen": "june",
+
         "eighteen": 10,
+
+        # -------------------------------------------------
+        # CLIMATE
+        # -------------------------------------------------
         "nineteen": "hot",
+
+        # -------------------------------------------------
+        # TIME
+        # -------------------------------------------------
         "month": 6,
-        "seventeen": 1
+        "year": 2025,
+
+        # -------------------------------------------------
+        # OPTIONAL HISTORICAL FEATURES
+        # -------------------------------------------------
+        "last_month_consumption": 420,
+
+        "avg_last_3_months": 410,
+
+        "avg_last_6_months": 395,
+
+        "consumption_growth_rate": 0.08,
     }
 
-    result = predict_consumption(sample_input)
-    print(result)
+    result = predict_consumption(
+        sample_input,
+    )
+
+    print("\n========== PREDICTION ==========")
+
+    print(json.dumps(result, indent=4))
+
+    print("================================\n")

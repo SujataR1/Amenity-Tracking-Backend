@@ -2,17 +2,19 @@
 
 import json
 import pickle
-import optuna
 import pandas as pd
 import numpy as np
 import os
+import joblib
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from xgboost import XGBRegressor
 
-from sklearn.preprocessing import RobustScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+)
 
 from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
@@ -20,68 +22,12 @@ from Database_and_ORM.Database_Models import (
     User,
 )
 
-# -----------------------------
-# DEVICE
-# -----------------------------
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from Machine_Learning.preprocessing import preprocess_dataframe
+from Machine_Learning.feature_engineering import create_features
 
 
 # =========================================================
-# MODEL
-# =========================================================
-class ConsumptionModel(nn.Module):
-    def __init__(self, num_users, input_dim,
-                 hidden_dim1=128, hidden_dim2=64,
-                 embedding_dim=32, dropout_rate=0.2):
-
-        super().__init__()
-
-        self.user_embedding = nn.Embedding(num_users, embedding_dim)
-
-        self.fc1 = nn.Linear(input_dim + embedding_dim, hidden_dim1)
-        self.fc2 = nn.Linear(hidden_dim1, hidden_dim2)
-        self.fc3 = nn.Linear(hidden_dim2, 1)
-
-        self.dropout = nn.Dropout(dropout_rate)
-
-    def forward(self, user_ids, features):
-
-        user_emb = self.user_embedding(user_ids)
-        x = torch.cat([features, user_emb], dim=1)
-
-        x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
-
-        x = torch.relu(self.fc2(x))
-        x = self.dropout(x)
-
-        return self.fc3(x)
-
-
-# =========================================================
-# SINGLE FEATURE ENGINEERING SOURCE
-# =========================================================
-def build_features(df: pd.DataFrame):
-
-    df["people_per_room"] = df["one"] / (df["three"].replace(0, 1))
-    df["vacation_factor"] = df["eighteen"] * 0.1
-
-    appliance_cols = [
-        "four", "five", "six", "seven", "eight",
-        "nine", "ten", "eleven", "twelve", "thirteen"
-    ]
-
-    df["appliance_score"] = 0
-    for c in appliance_cols:
-        df["appliance_score"] += df.get(c, 0)
-
-    df["luxury_score"] = df.get("fifteen", 0) + df.get("sixteen", 0)
-
-    return df
-
-
-# =========================================================
-# DATASET BUILDER (FIXED TIME-AWARE VERSION)
+# DATASET BUILDER
 # =========================================================
 async def build_dataset(resource_model, target_column):
 
@@ -89,28 +35,141 @@ async def build_dataset(resource_model, target_column):
 
     user_ids = [u["id"] for u in users]
 
-    # 🔥 FIX: include month/year for time correctness
+    # -----------------------------------------------------
+    # CONSUMPTION DATA
+    # -----------------------------------------------------
     consumption = await resource_model.filter(
         user_id__in=user_ids
-    ).values("user_id", "year", "month", target_column)
+    ).values(
+        "user_id",
+        "year",
+        "month",
+        target_column,
+    )
 
+    # -----------------------------------------------------
+    # QUESTIONNAIRE DATA
+    # -----------------------------------------------------
     questionnaire = await QuestionnaireAnswers.filter(
         user_id__in=user_ids
     ).values(
-        "user_id", "one", "two", "three",
-        "four", "five", "six", "seven",
-        "eight", "nine", "ten", "eleven",
-        "twelve", "thirteen", "fourteen",
-        "fifteen", "sixteen", "seventeen",
-        "eighteen", "nineteen"
+        "user_id",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
     )
 
-    df_c = pd.DataFrame(consumption)
-    df_q = pd.DataFrame(questionnaire)
+    # -----------------------------------------------------
+    # DATAFRAMES
+    # -----------------------------------------------------
+    df_consumption = pd.DataFrame(consumption)
 
-    # 🔥 FIX: proper join strategy
-    # (user-level alignment, not raw merge only)
-    df = df_c.merge(df_q, on="user_id", how="left")
+    df_questionnaire = pd.DataFrame(questionnaire)
+
+    # -----------------------------------------------------
+    # MERGE
+    # -----------------------------------------------------
+    df = df_consumption.merge(
+        df_questionnaire,
+        on="user_id",
+        how="left",
+    )
+
+    # -----------------------------------------------------
+    # CLEANUP
+    # -----------------------------------------------------
+    df.fillna(0, inplace=True)
+
+    return df
+
+
+# =========================================================
+# HISTORICAL FEATURE ENGINEERING
+# =========================================================
+def add_historical_features(
+    df: pd.DataFrame,
+    target_column: str,
+) -> pd.DataFrame:
+
+    df = df.copy()
+
+    # -----------------------------------------------------
+    # SORT FOR TIME SERIES
+    # -----------------------------------------------------
+    df = df.sort_values(
+        by=["user_id", "year", "month"]
+    )
+
+    # -----------------------------------------------------
+    # LAST MONTH CONSUMPTION
+    # -----------------------------------------------------
+    df["last_month_consumption"] = (
+        df.groupby("user_id")[target_column]
+        .shift(1)
+    )
+
+    # -----------------------------------------------------
+    # LAST 3 MONTH AVERAGE
+    # -----------------------------------------------------
+    df["avg_last_3_months"] = (
+        df.groupby("user_id")[target_column]
+        .transform(
+            lambda x: x.shift(1).rolling(3, min_periods=1).mean()
+        )
+    )
+
+    # -----------------------------------------------------
+    # LAST 6 MONTH AVERAGE
+    # -----------------------------------------------------
+    df["avg_last_6_months"] = (
+        df.groupby("user_id")[target_column]
+        .transform(
+            lambda x: x.shift(1).rolling(6, min_periods=1).mean()
+        )
+    )
+
+    # -----------------------------------------------------
+    # GROWTH RATE
+    # -----------------------------------------------------
+    df["consumption_growth_rate"] = (
+        (
+            df[target_column]
+            - df["last_month_consumption"]
+        )
+        /
+        (
+            df["last_month_consumption"].replace(0, 1)
+        )
+    )
+
+    # -----------------------------------------------------
+    # YEARLY USER AVERAGE
+    # -----------------------------------------------------
+    df["yearly_avg_consumption"] = (
+        df.groupby("user_id")[target_column]
+        .transform("mean")
+    )
+
+    # -----------------------------------------------------
+    # CLEANUP
+    # -----------------------------------------------------
+    df.replace([np.inf, -np.inf], 0, inplace=True)
 
     df.fillna(0, inplace=True)
 
@@ -118,11 +177,51 @@ async def build_dataset(resource_model, target_column):
 
 
 # =========================================================
+# MODEL EVALUATION
+# =========================================================
+def evaluate_model(y_true, y_pred):
+
+    mae = mean_absolute_error(y_true, y_pred)
+
+    mse = mean_squared_error(y_true, y_pred)
+
+    rmse = np.sqrt(mse)
+
+    r2 = r2_score(y_true, y_pred)
+
+    print("\n========== MODEL EVALUATION ==========")
+
+    print(f"MAE  : {mae}")
+
+    print(f"MSE  : {mse}")
+
+    print(f"RMSE : {rmse}")
+
+    print(f"R2   : {r2}")
+
+    print("======================================\n")
+
+    return {
+        "mae": float(mae),
+        "mse": float(mse),
+        "rmse": float(rmse),
+        "r2": float(r2),
+    }
+
+
+# =========================================================
 # TRAINING PIPELINE
 # =========================================================
 async def retrain_model(resource_type: str):
 
-    with open("Machine_Learning/Machine_Learning_Parameter_Schemas.json") as f:
+    # -----------------------------------------------------
+    # LOAD CONFIG
+    # -----------------------------------------------------
+    with open(
+        "Machine_Learning/Machine_Learning_Parameter_Schemas.json",
+        "r",
+    ) as f:
+
         config_all = json.load(f)
 
     config = config_all.get(resource_type)
@@ -130,119 +229,187 @@ async def retrain_model(resource_type: str):
     if not config:
         raise ValueError("Invalid resource type config")
 
+    # -----------------------------------------------------
+    # PATHS
+    # -----------------------------------------------------
     model_dir = config["Directory_Path"]
+
     os.makedirs(model_dir, exist_ok=True)
 
-    model_path = os.path.join(model_dir, config["Trained_Model_Name"])
-    scaler_path = os.path.join(model_dir, config["Scaler_File_Name"])
-    features_path = os.path.join(model_dir, config["Features_File_Name"])
-    user_map_path = os.path.join(model_dir, "user_map.pkl")
+    model_path = os.path.join(
+        model_dir,
+        config["Trained_Model_Name"],
+    )
+
+    features_path = os.path.join(
+        model_dir,
+        config["Features_File_Name"],
+    )
 
     target_column = config["Column_Name"]
+
     resource_model = globals()[config["Database_Name"]]
 
-    # -----------------------------
+    # -----------------------------------------------------
     # LOAD DATA
-    # -----------------------------
-    df = await build_dataset(resource_model, target_column)
+    # -----------------------------------------------------
+    print("Loading dataset...")
 
-    # -----------------------------
-    # FEATURE ENGINEERING (SINGLE SOURCE)
-    # -----------------------------
-    df = build_features(df)
+    df = await build_dataset(
+        resource_model,
+        target_column,
+    )
 
-    df.fillna(0, inplace=True)
+    # -----------------------------------------------------
+    # PREPROCESSING
+    # -----------------------------------------------------
+    print("Preprocessing dataset...")
 
-    # -----------------------------
-    # CLIP TARGET (REMOVE OUTLIERS)
-    # -----------------------------
+    df = preprocess_dataframe(df)
+
+    # -----------------------------------------------------
+    # FEATURE ENGINEERING
+    # -----------------------------------------------------
+    print("Creating features...")
+
+    df = create_features(df)
+
+    # -----------------------------------------------------
+    # HISTORICAL FEATURES
+    # -----------------------------------------------------
+    print("Creating historical features...")
+
+    df = add_historical_features(
+        df,
+        target_column,
+    )
+
+    # -----------------------------------------------------
+    # TARGET CLEANING
+    # -----------------------------------------------------
     df[target_column] = np.clip(
         df[target_column],
         df[target_column].quantile(0.01),
-        df[target_column].quantile(0.99)
+        df[target_column].quantile(0.99),
     )
 
-    # -----------------------------
-    # ENCODING
-    # -----------------------------
+    # -----------------------------------------------------
+    # CYCLICAL MONTH FEATURES
+    # -----------------------------------------------------
+    df["month_sin"] = np.sin(
+        2 * np.pi * df["month"] / 12
+    )
+
+    df["month_cos"] = np.cos(
+        2 * np.pi * df["month"] / 12
+    )
+
+    # -----------------------------------------------------
+    # ONE HOT ENCODING
+    # -----------------------------------------------------
+    categorical_columns = [
+        "nineteen",
+        "seventeen",
+    ]
+
     df = pd.get_dummies(
         df,
-        columns=["month", "nineteen", "seventeen"],
-        prefix=["month", "climate", "vacation"]
+        columns=categorical_columns,
+        drop_first=False,
     )
 
-    # -----------------------------
-    # USER MAPPING (IMPORTANT FIX)
-    # -----------------------------
-    user_map = {u: i for i, u in enumerate(df["user_id"].unique())}
-    df["user_id"] = df["user_id"].map(user_map)
+    # -----------------------------------------------------
+    # DROP UNUSED COLUMNS
+    # -----------------------------------------------------
+    drop_columns = [
+        target_column,
+    ]
 
-    with open(user_map_path, "wb") as f:
-        pickle.dump(user_map, f)
+    if "user_id" in df.columns:
+        drop_columns.append("user_id")
 
-    # -----------------------------
-    # FEATURES
-    # -----------------------------
-    feature_cols = [c for c in df.columns if c != target_column]
+    # -----------------------------------------------------
+    # FEATURES / TARGET
+    # -----------------------------------------------------
+    X = df.drop(columns=drop_columns)
 
-    X = df[feature_cols]
-    y = np.log1p(df[target_column])  # log transform
+    y = np.log1p(df[target_column])
 
-    # -----------------------------
-    # SCALING
-    # -----------------------------
-    scaler = RobustScaler()
-    X = scaler.fit_transform(X)
-
-    with open(scaler_path, "wb") as f:
-        pickle.dump(scaler, f)
+    # -----------------------------------------------------
+    # STORE FEATURE NAMES
+    # -----------------------------------------------------
+    feature_names = X.columns.tolist()
 
     with open(features_path, "w") as f:
-        json.dump(feature_cols, f)
+        json.dump(feature_names, f)
 
-    # -----------------------------
-    # TENSORS
-    # -----------------------------
-    user_tensor = torch.tensor(df["user_id"].values, dtype=torch.long).to(device)
-    X_tensor = torch.tensor(X, dtype=torch.float32).to(device)
-    y_tensor = torch.tensor(y.values, dtype=torch.float32).view(-1, 1).to(device)
-
-    dataset = TensorDataset(user_tensor, X_tensor, y_tensor)
-
-    train_size = int(0.8 * len(dataset))
-    train_ds, val_ds = torch.utils.data.random_split(dataset, [train_size, len(dataset) - train_size])
-
-    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=32)
+    # -----------------------------------------------------
+    # TRAIN TEST SPLIT
+    # -----------------------------------------------------
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+    )
 
     # =====================================================
-    # MODEL INIT (SIMPLE + STABLE)
+    # XGBOOST MODEL
     # =====================================================
-    model = ConsumptionModel(
-        num_users=len(user_map),
-        input_dim=X.shape[1]
-    ).to(device)
+    print("Training XGBoost model...")
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    loss_fn = nn.L1Loss()
+    model = XGBRegressor(
+        n_estimators=300,
+        learning_rate=0.05,
+        max_depth=6,
+        min_child_weight=3,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        objective="reg:squarederror",
+        random_state=42,
+    )
 
-    # -----------------------------
-    # TRAINING LOOP
-    # -----------------------------
-    for epoch in range(20):
+    # -----------------------------------------------------
+    # TRAIN
+    # -----------------------------------------------------
+    model.fit(
+        X_train,
+        y_train,
+    )
 
-        model.train()
+    # -----------------------------------------------------
+    # PREDICT
+    # -----------------------------------------------------
+    predictions = model.predict(X_test)
 
-        for u, x, y in train_loader:
-            optimizer.zero_grad()
-            pred = model(u, x)
-            loss = loss_fn(pred, y)
-            loss.backward()
-            optimizer.step()
+    predictions = np.expm1(predictions)
 
-    # -----------------------------
+    y_test_actual = np.expm1(y_test)
+
+    # -----------------------------------------------------
+    # EVALUATION
+    # -----------------------------------------------------
+    metrics = evaluate_model(
+        y_test_actual,
+        predictions,
+    )
+
+    # -----------------------------------------------------
     # SAVE MODEL
-    # -----------------------------
-    torch.save(model.state_dict(), model_path)
+    # -----------------------------------------------------
+    print("Saving model artifacts...")
 
-    print("✅ Model trained and saved successfully.")
+    joblib.dump(
+        model,
+        model_path,
+    )
+
+    print(
+        f"\n✅ XGBoost model saved successfully at: {model_path}"
+    )
+
+    return {
+        "status": "success",
+        "metrics": metrics,
+        "model_path": model_path,
+    }
