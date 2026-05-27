@@ -42,7 +42,7 @@ async def create_questionnaire_answer_endpoint(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while saving the questionnaire answers",
+            detail=str(e),
         )
 
 

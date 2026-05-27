@@ -1,3 +1,4 @@
+#Resource_Consumption/Electricity_Consumption_Router.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from .Data_Schemas import (
     CreateConsumption,
@@ -74,7 +75,7 @@ async def create_electricity_record(
 
 @Electricity_Consumption_Router.get("/", status_code=status.HTTP_200_OK)
 async def get_electricity_records(
-    data: GetConsumption,
+    data: GetConsumption = Depends(),
     payload=Depends(verify_jwt),
 ):
     user_id = payload.get("user_id")
