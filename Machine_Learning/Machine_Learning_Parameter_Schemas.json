@@ -1,11 +1,9 @@
 {
   "Electricity": {
-    "Directory_Path": "Machine_Learning/Trained_Models/Electricity_Consumption",
-    "Database_Name": "ElectricityConsumption",
-    "Column_Name": "electricity_consumption",
-    "Trained_Model_Name": "Electricity_Consumption_Model.pkl",
-    "Scaler_File_Name": "Electricity_Consumption_Model_Scaler.pkl",
-    "Features_File_Name": "Electricity_Consumption_Model_Features.json"
+    "Directory_Path": "Machine_Learning/model_versions",
+    "Trained_Model_Name": "electricity_xgboost_v1.pkl",
+    "Features_File_Name": "features_v1.json",
+    "Column_Name": "electricity_consumption"
   },
   "Gas": {
     "Directory_Path": "Machine_Learning/Trained_Models/Gas_Consumption",

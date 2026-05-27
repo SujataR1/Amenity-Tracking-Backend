@@ -29,9 +29,15 @@ async def predict_consumption(
     resource_type = resource_type.value
 
     # =====================================================
-    # LOAD CONFIG JSON (FIXED)
+    # LOAD CONFIG JSON (SAFE FIX)
     # =====================================================
     config_path = "Machine_Learning/Machine_Learning_Parameter_Schemas.json"
+
+    if not path.exists(config_path):
+        raise HTTPException(
+            status_code=500,
+            detail="Config file not found"
+        )
 
     with open(config_path, "r") as file:
         machine_learning_parameter_schemas = json.load(file)
@@ -45,7 +51,7 @@ async def predict_consumption(
         )
 
     # =====================================================
-    # PATHS
+    # BUILD PATHS
     # =====================================================
     model_dir = config["Directory_Path"]
 
@@ -53,7 +59,7 @@ async def predict_consumption(
     features_path = path.join(model_dir, config["Features_File_Name"])
 
     # =====================================================
-    # USER
+    # USER VALIDATION
     # =====================================================
     user_id = payload.get("user_id")
 
@@ -62,50 +68,53 @@ async def predict_consumption(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please login again"
+            detail="User not found / invalid session"
         )
 
     # =====================================================
-    # FILE CHECK (IMPORTANT FIX)
+    # FILE CHECK (REAL ROOT FIX)
     # =====================================================
     if not path.exists(model_path):
         raise HTTPException(
             status_code=500,
-            detail=f"Model not found: {model_path}"
+            detail=f"Model file missing: {model_path}"
         )
 
     if not path.exists(features_path):
         raise HTTPException(
             status_code=500,
-            detail=f"Features file not found: {features_path}"
+            detail=f"Features file missing: {features_path}"
         )
 
     # =====================================================
-    # LOAD MODEL (SAFE)
+    # LOAD MODEL
     # =====================================================
     model = joblib.load(model_path)
 
     # =====================================================
-    # LOAD FEATURES (FIXED JSON BUG)
+    # LOAD FEATURE LIST (FIX JSON BUG)
     # =====================================================
     with open(features_path, "r") as f:
         all_features = json.load(f)
 
     # =====================================================
-    # GET QUESTIONNAIRE
+    # GET USER QUESTIONNAIRE
     # =====================================================
     user_questionnaire = await QuestionnaireAnswers.get(user_id=user_id)
 
     # =====================================================
-    # FIX MONTH INPUT (VERY IMPORTANT)
+    # FIX MONTH INPUT SAFELY
     # =====================================================
     if isinstance(month, int):
         month_num = month
     else:
-        month_num = datetime.strptime(month, "%B").month
+        try:
+            month_num = datetime.strptime(month, "%B").month
+        except:
+            month_num = int(month)
 
     # =====================================================
-    # INPUT DATA
+    # BUILD INPUT DATA
     # =====================================================
     input_data = {
         "year": int(year),
@@ -135,16 +144,14 @@ async def predict_consumption(
     df = pd.DataFrame([input_data])
 
     # =====================================================
-    # PREPROCESSING PIPELINE
+    # PIPELINE
     # =====================================================
     df = preprocess_dataframe(df)
     df = create_features(df)
 
-    # cyclical encoding
     df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
     df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
 
-    # historical placeholders
     for col in [
         "last_month_consumption",
         "avg_last_3_months",
@@ -154,10 +161,8 @@ async def predict_consumption(
     ]:
         df[col] = 0
 
-    # one-hot encoding
     df = pd.get_dummies(df, columns=["nineteen", "seventeen"], drop_first=False)
 
-    # align features
     df = df.reindex(columns=all_features, fill_value=0)
 
     # =====================================================
