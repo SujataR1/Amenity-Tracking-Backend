@@ -44,19 +44,18 @@ def predict(input_data: dict):
     df = pd.DataFrame([input_data])
 
     # -----------------------------
-    # 2. Preprocess
+    # 2. Preprocess (MUST MATCH TRAINING)
     # -----------------------------
     df = preprocess_dataframe(df)
 
     # -----------------------------
-    # 3. Feature Engineering
+    # 3. Feature Engineering (MUST MATCH TRAINING)
     # -----------------------------
     df = create_features(df)
 
     # -----------------------------
-    # 4. One-hot + Align
+    # 4. Align Features (CRITICAL FIX)
     # -----------------------------
-    df = pd.get_dummies(df)
     df = df.reindex(columns=FEATURES, fill_value=0)
 
     # -----------------------------
@@ -65,7 +64,7 @@ def predict(input_data: dict):
     pred_log = MODEL.predict(df)[0]
     pred = np.expm1(pred_log)
 
-    pred = max(pred, 0)
+    pred = max(float(pred), 0)
 
     # -----------------------------
     # 6. Business Logic
@@ -80,8 +79,10 @@ def predict(input_data: dict):
         level = "High"
 
     # -----------------------------
+    # RETURN
+    # -----------------------------
     return {
-        "predicted_electricity_consumption": round(float(pred), 2),
+        "predicted_electricity_consumption": round(pred, 2),
         "estimated_bill_amount": round(float(bill), 2),
         "usage_level": level,
     }
