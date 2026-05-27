@@ -20,19 +20,14 @@ from Machine_Learning.preprocessing import preprocess_dataframe
 
 
 # =========================================================
-# MAIN PREDICTION FUNCTION
+# COMMON PREDICTION PIPELINE
 # =========================================================
-async def predict_consumption(
-    resource_type: ResourceTypeEnum,
+async def run_prediction_pipeline(
+    resource_type,
     month,
-    year: int,
-    payload: dict,
+    year,
+    questionnaire_data,
 ):
-
-    # =====================================================
-    # NORMALIZE RESOURCE TYPE
-    # =====================================================
-    resource_type = resource_type.value
 
     # =====================================================
     # LOAD CONFIG
@@ -57,7 +52,7 @@ async def predict_consumption(
         )
 
     # =====================================================
-    # BUILD MODEL PATHS
+    # MODEL PATHS
     # =====================================================
     model_dir = config["Directory_Path"]
 
@@ -72,20 +67,7 @@ async def predict_consumption(
     )
 
     # =====================================================
-    # VALIDATE USER
-    # =====================================================
-    user_id = payload.get("user_id")
-
-    user = await User.get_or_none(id=user_id)
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid user",
-        )
-
-    # =====================================================
-    # CHECK MODEL FILES
+    # CHECK FILES
     # =====================================================
     if not path.exists(model_path):
         raise HTTPException(
@@ -110,33 +92,13 @@ async def predict_consumption(
     with open(features_path, "r") as f:
         features_data = json.load(f)
 
-    # FIXED ROOT ISSUE
     if isinstance(features_data, dict):
         all_features = features_data.get("features", [])
     else:
         all_features = features_data
 
-    if not isinstance(all_features, list):
-        raise HTTPException(
-            status_code=500,
-            detail="Invalid features file format",
-        )
-
     # =====================================================
-    # GET QUESTIONNAIRE ANSWERS
-    # =====================================================
-    user_questionnaire = await QuestionnaireAnswers.get_or_none(
-        user_id=user_id
-    )
-
-    if not user_questionnaire:
-        raise HTTPException(
-            status_code=404,
-            detail="Questionnaire answers not found",
-        )
-
-    # =====================================================
-    # CONVERT MONTH TO NUMBER
+    # MONTH CONVERSION
     # =====================================================
     try:
         if isinstance(month, int):
@@ -154,73 +116,65 @@ async def predict_consumption(
         )
 
     # =====================================================
-    # BUILD INPUT DATA
+    # INPUT DATA
     # =====================================================
     input_data = {
         "year": int(year),
         "month": month_num,
 
-        "num_people": user_questionnaire.num_people,
-        "num_children": user_questionnaire.num_children,
-        "bedrooms": user_questionnaire.bedrooms,
+        "num_people": questionnaire_data["num_people"],
+        "num_children": questionnaire_data["num_children"],
+        "bedrooms": questionnaire_data["bedrooms"],
 
-        "has_ac": int(user_questionnaire.has_ac),
-        "has_geyser": int(user_questionnaire.has_geyser),
-        "has_iron": int(user_questionnaire.has_iron),
-
+        "has_ac": int(questionnaire_data["has_ac"]),
+        "has_geyser": int(questionnaire_data["has_geyser"]),
+        "has_iron": int(questionnaire_data["has_iron"]),
         "has_washing_machine": int(
-            user_questionnaire.has_washing_machine
+            questionnaire_data["has_washing_machine"]
         ),
-
         "has_dishwasher": int(
-            user_questionnaire.has_dishwasher
+            questionnaire_data["has_dishwasher"]
         ),
-
         "has_induction": int(
-            user_questionnaire.has_induction
+            questionnaire_data["has_induction"]
         ),
-
         "has_microwave": int(
-            user_questionnaire.has_microwave
+            questionnaire_data["has_microwave"]
         ),
-
         "has_kettle": int(
-            user_questionnaire.has_kettle
+            questionnaire_data["has_kettle"]
         ),
-
         "has_vacuum": int(
-            user_questionnaire.has_vacuum
+            questionnaire_data["has_vacuum"]
         ),
-
         "has_room_heater": int(
-            user_questionnaire.has_room_heater
+            questionnaire_data["has_room_heater"]
         ),
 
         "home_area": float(
-            user_questionnaire.home_area
+            questionnaire_data["home_area"]
         ),
 
         "has_pool": int(
-            user_questionnaire.has_pool
+            questionnaire_data["has_pool"]
         ),
 
         "has_garden": int(
-            user_questionnaire.has_garden
+            questionnaire_data["has_garden"]
         ),
 
         "vacation_month": str(
-            user_questionnaire.vacation_month
+            questionnaire_data["vacation_month"]
         ),
 
         "vacation_days": int(
-            user_questionnaire.vacation_days
+            questionnaire_data["vacation_days"]
         ),
 
         "climate": str(
-            user_questionnaire.climate
+            questionnaire_data["climate"]
         ),
 
-        # historical defaults
         "billing_days": 30,
     }
 
@@ -240,7 +194,7 @@ async def predict_consumption(
     df = create_features(df)
 
     # =====================================================
-    # CYCLICAL MONTH FEATURES
+    # MONTH FEATURES
     # =====================================================
     df["month_sin"] = np.sin(
         2 * np.pi * df["month"] / 12
@@ -294,6 +248,9 @@ async def predict_consumption(
     # =====================================================
     # PREDICTION
     # =====================================================
+    print(df.to_dict())
+    print(df.columns.tolist())
+    print(df.T)
     prediction = model.predict(df)
 
     predicted_consumption = float(
@@ -302,12 +259,8 @@ async def predict_consumption(
 
     estimated_bill = predicted_consumption * 8
 
-    # =====================================================
-    # RESPONSE
-    # =====================================================
     return {
         "resource_type": resource_type,
-        "user_id": str(user_id),
         "month": month_num,
         "year": year,
         "projected_consumption": round(
@@ -319,3 +272,89 @@ async def predict_consumption(
             2,
         ),
     }
+
+
+# =========================================================
+# NORMAL USER PREDICTION
+# =========================================================
+async def predict_consumption(
+    resource_type: ResourceTypeEnum,
+    month,
+    year: int,
+    payload: dict,
+):
+
+    resource_type = resource_type.value
+
+    user_id = payload.get("user_id")
+
+    user = await User.get_or_none(id=user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid user",
+        )
+
+    questionnaire = await QuestionnaireAnswers.get_or_none(
+        user_id=user_id
+    )
+
+    if not questionnaire:
+        raise HTTPException(
+            status_code=404,
+            detail="Questionnaire answers not found",
+        )
+
+    questionnaire_data = {
+        "num_people": questionnaire.num_people,
+        "num_children": questionnaire.num_children,
+        "bedrooms": questionnaire.bedrooms,
+        "has_ac": questionnaire.has_ac,
+        "has_geyser": questionnaire.has_geyser,
+        "has_iron": questionnaire.has_iron,
+        "has_washing_machine": questionnaire.has_washing_machine,
+        "has_dishwasher": questionnaire.has_dishwasher,
+        "has_induction": questionnaire.has_induction,
+        "has_microwave": questionnaire.has_microwave,
+        "has_kettle": questionnaire.has_kettle,
+        "has_vacuum": questionnaire.has_vacuum,
+        "has_room_heater": questionnaire.has_room_heater,
+        "home_area": questionnaire.home_area,
+        "has_pool": questionnaire.has_pool,
+        "has_garden": questionnaire.has_garden,
+        "vacation_month": questionnaire.vacation_month,
+        "vacation_days": questionnaire.vacation_days,
+        "climate": questionnaire.climate,
+    }
+
+    result = await run_prediction_pipeline(
+        resource_type=resource_type,
+        month=month,
+        year=year,
+        questionnaire_data=questionnaire_data,
+    )
+
+    result["user_id"] = str(user_id)
+
+    return result
+
+
+# =========================================================
+# TEST CUSTOM QUESTIONNAIRE PREDICTION
+# =========================================================
+async def test_prediction(
+    request,
+    payload,
+):
+
+    resource_type = request.resource_type.value
+
+    result = await run_prediction_pipeline(
+        resource_type=resource_type,
+        month=request.month,
+        year=request.year,
+        questionnaire_data=request.questionnaire.model_dump(),
+    )
+
+    return result
