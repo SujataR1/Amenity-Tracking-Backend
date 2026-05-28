@@ -168,3 +168,11 @@ Amenity-Tracking-Backend
 # Testing Scripts
 # Testing_Scripts
  *.env*
+
+# Uploads folder
+uploads/
+
+# Certificates
+*.pem
+*.crt
+*.key 

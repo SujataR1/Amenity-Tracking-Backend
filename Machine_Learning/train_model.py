@@ -5,9 +5,15 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+import sys
 
 from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
+
+# =========================================================
+# FIX: PATH SETUP (MUST BE FIRST)
+# =========================================================
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from Machine_Learning.preprocessing import preprocess_dataframe
 from Machine_Learning.feature_engineering import create_features
@@ -20,7 +26,16 @@ from Machine_Learning.constants import (
     FEATURES_PATH,
 )
 
-DATASET_PATH = "Machine_Learning/datasets/electricity_sample_data_500_rows.csv"
+# =========================================================
+# CONFIG
+# =========================================================
+DATASET_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "datasets",
+    "electricity_sample_data_500_rows.csv"
+)
+
+np.random.seed(RANDOM_STATE)
 
 
 # =========================================================
@@ -31,89 +46,88 @@ def load_dataset():
         raise FileNotFoundError(f"Dataset not found: {DATASET_PATH}")
 
     df = pd.read_csv(DATASET_PATH)
-    print("Dataset shape:", df.shape)
+
+    # safety check
+    if TARGET_COLUMN not in df.columns:
+        raise ValueError(f"Target column '{TARGET_COLUMN}' not found in dataset")
+
+    print(f"Dataset loaded: {df.shape}")
     return df
 
 
 # =========================================================
-# OUTLIER HANDLING (ONLY TARGET)
+# OUTLIER HANDLING (TRAIN ONLY)
 # =========================================================
-def remove_outliers(df):
+def remove_outliers_train_only(df: pd.DataFrame):
     df = df.copy()
 
     lower = df[TARGET_COLUMN].quantile(0.01)
     upper = df[TARGET_COLUMN].quantile(0.99)
 
-    df[TARGET_COLUMN] = np.clip(df[TARGET_COLUMN], lower, upper)
+    df = df[(df[TARGET_COLUMN] >= lower) & (df[TARGET_COLUMN] <= upper)]
+
     return df
 
 
 # =========================================================
-# PIPELINE (FIXED - NO DATA LEAKAGE)
+# FEATURE PIPELINE
+# =========================================================
+def build_features(df: pd.DataFrame):
+    df = preprocess_dataframe(df)
+    df = create_features(df)
+    return df
+
+
+# =========================================================
+# DATA PREP
 # =========================================================
 def prepare_data(df):
 
-    # -----------------------------------------------------
-    # STEP 1: SPLIT RAW DATA FIRST (IMPORTANT FIX)
-    # -----------------------------------------------------
+    # ----------------------------
+    # SPLIT FIRST (IMPORTANT)
+    # ----------------------------
     train_df, test_df = train_test_split(
         df,
         test_size=TEST_SIZE,
         random_state=RANDOM_STATE,
     )
 
-    # -----------------------------------------------------
-    # STEP 2: PREPROCESS SEPARATELY
-    # -----------------------------------------------------
-    train_df = preprocess_dataframe(train_df)
-    test_df = preprocess_dataframe(test_df)
+    # ----------------------------
+    # OUTLIER REMOVAL (TRAIN ONLY)
+    # ----------------------------
+    train_df = remove_outliers_train_only(train_df)
 
-    # -----------------------------------------------------
-    # STEP 3: FEATURE ENGINEERING SEPARATELY
-    # -----------------------------------------------------
-    train_df = create_features(train_df)
-    test_df = create_features(test_df)
+    # ----------------------------
+    # FEATURE ENGINEERING
+    # ----------------------------
+    train_df = build_features(train_df)
+    test_df = build_features(test_df)
 
-    # -----------------------------------------------------
-    # STEP 4: OUTLIER HANDLING (TRAIN ONLY EFFECT)
-    # -----------------------------------------------------
-    train_df = remove_outliers(train_df)
-    test_df = remove_outliers(test_df)
-
-    # -----------------------------------------------------
-    # STEP 5: SPLIT X / Y
-    # -----------------------------------------------------
+    # ----------------------------
+    # TARGET SPLIT
+    # ----------------------------
     y_train = np.log1p(train_df[TARGET_COLUMN])
     y_test = np.log1p(test_df[TARGET_COLUMN])
 
     X_train = train_df.drop(columns=[TARGET_COLUMN])
     X_test = test_df.drop(columns=[TARGET_COLUMN])
 
-    # -----------------------------------------------------
-    # STEP 6: ONE HOT ENCODING
-    # -----------------------------------------------------
+    # ----------------------------
+    # ENCODING
+    # ----------------------------
     X_train = pd.get_dummies(X_train)
     X_test = pd.get_dummies(X_test)
 
-    # -----------------------------------------------------
-    # STEP 7: ALIGN COLUMNS (CRITICAL FIX)
-    # -----------------------------------------------------
-    X_train, X_test = X_train.align(
-        X_test,
-        join="left",
-        axis=1,
-        fill_value=0
-    )
+    # align columns
+    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
 
-    # -----------------------------------------------------
-    # STEP 8: SAVE FEATURE LIST
-    # -----------------------------------------------------
+    # ----------------------------
+    # SAVE FEATURE LIST
+    # ----------------------------
     os.makedirs(os.path.dirname(FEATURES_PATH), exist_ok=True)
 
-    feature_list = X_train.columns.tolist()
-
     with open(FEATURES_PATH, "w") as f:
-        json.dump({"features": feature_list}, f, indent=4)
+        json.dump({"features": list(X_train.columns)}, f, indent=4)
 
     return X_train, X_test, y_train, y_test
 
@@ -152,12 +166,10 @@ def train_model():
     # --------------------------
     # PREDICTION
     # --------------------------
-    preds = model.predict(X_test)
+    preds = np.expm1(model.predict(X_test))
+    y_true = np.expm1(y_test)
 
-    preds_actual = np.expm1(preds)
-    y_test_actual = np.expm1(y_test)
-
-    metrics = evaluate_model(y_test_actual, preds_actual)
+    metrics = evaluate_model(y_true, preds)
 
     # --------------------------
     # SCORES
@@ -166,8 +178,8 @@ def train_model():
     test_r2 = model.score(X_test, y_test)
 
     print("\n========== PERFORMANCE ==========")
-    print("Train R2:", train_r2)
-    print("Test R2 :", test_r2)
+    print(f"Train R2: {train_r2:.4f}")
+    print(f"Test R2 : {test_r2:.4f}")
 
     # --------------------------
     # CROSS VALIDATION
@@ -181,14 +193,15 @@ def train_model():
         n_jobs=-1,
     )
 
-    print("CV mean:", cv_scores.mean())
+    print(f"CV Mean: {cv_scores.mean():.4f}")
 
     # --------------------------
     # SAVE MODEL
     # --------------------------
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     joblib.dump(model, MODEL_PATH)
 
-    print("\nModel saved at:", MODEL_PATH)
+    print(f"\nModel saved at: {MODEL_PATH}")
 
     return {
         "metrics": metrics,
@@ -198,6 +211,9 @@ def train_model():
     }
 
 
+# =========================================================
+# ENTRY POINT
+# =========================================================
 if __name__ == "__main__":
     result = train_model()
     print(json.dumps(result, indent=4))

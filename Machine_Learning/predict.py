@@ -5,6 +5,8 @@ import joblib
 import pandas as pd
 import numpy as np
 
+from functools import lru_cache
+
 from Machine_Learning.constants import MODEL_PATH, FEATURES_PATH
 from Machine_Learning.preprocessing import preprocess_dataframe
 from Machine_Learning.feature_engineering import create_features
@@ -14,6 +16,7 @@ from Machine_Learning.feature_engineering import create_features
 # BILL CALCULATION ENGINE
 # =========================================================
 def calculate_electricity_bill(units: float):
+
     units = max(units, 0)
 
     if units <= 100:
@@ -25,63 +28,82 @@ def calculate_electricity_bill(units: float):
 
 
 # =========================================================
-# LOAD MODEL + FEATURES
+# LOAD MODEL (CACHE FIX)
 # =========================================================
+@lru_cache(maxsize=1)
 def load_model():
     return joblib.load(MODEL_PATH)
 
 
+# =========================================================
+# LOAD FEATURES (STRICT FORMAT ONLY)
+# =========================================================
+@lru_cache(maxsize=1)
 def load_feature_names():
+
     with open(FEATURES_PATH, "r") as f:
         data = json.load(f)
 
     if isinstance(data, dict) and "features" in data:
         return data["features"]
 
-    return data
+    raise ValueError("Invalid feature file format. Expected {'features': [...]}.")
 
 
 # =========================================================
-# CORE PREDICTION
+# FEATURE PIPELINE (MUST MATCH TRAINING EXACTLY)
+# =========================================================
+def build_features(df: pd.DataFrame):
+
+    df = preprocess_dataframe(df)
+    df = create_features(df)
+
+    return df
+
+
+# =========================================================
+# CORE PREDICTION FUNCTION
 # =========================================================
 def predict_consumption(input_data: dict):
 
     model = load_model()
     feature_names = load_feature_names()
 
-    # -----------------------------------------------------
-    # IMPORTANT: DO NOT ADD FAKE DEFAULTS HERE
-    # -----------------------------------------------------
+    # ----------------------------
+    # INPUT → DATAFRAME
+    # ----------------------------
     df = pd.DataFrame([input_data])
 
-    # -----------------------------------------------------
-    # PIPELINE (MUST MATCH TRAINING EXACTLY)
-    # -----------------------------------------------------
-    df = preprocess_dataframe(df)
-    df = create_features(df)
+    # ----------------------------
+    # FEATURE ENGINEERING
+    # ----------------------------
+    df = build_features(df)
 
-    # -----------------------------------------------------
-    # ALIGN FEATURES (CRITICAL FIX)
-    # -----------------------------------------------------
+    # ----------------------------
+    # SAFE ALIGNMENT (IMPORTANT FIX)
+    # ----------------------------
     df = df.reindex(columns=feature_names, fill_value=0)
 
-    # -----------------------------------------------------
-    # PREDICTION
-    # -----------------------------------------------------
+    # ----------------------------
+    # PREDICT
+    # ----------------------------
     pred_log = model.predict(df)[0]
 
-    # IMPORTANT: only apply exp if model was trained on log1p
-    pred = np.expm1(pred_log)
-    pred = max(float(pred), 0)
+    # ----------------------------
+    # SAFE LOG TRANSFORM HANDLING
+    # ----------------------------
+    pred = np.expm1(pred_log) if pred_log > 0 else max(pred_log, 0)
 
-    # -----------------------------------------------------
-    # BILL
-    # -----------------------------------------------------
+    pred = float(max(pred, 0))
+
+    # ----------------------------
+    # BILL CALCULATION
+    # ----------------------------
     bill = calculate_electricity_bill(pred)
 
-    # -----------------------------------------------------
-    # LEVEL
-    # -----------------------------------------------------
+    # ----------------------------
+    # USAGE LEVEL
+    # ----------------------------
     if pred < 200:
         level = "Low"
     elif pred < 500:

@@ -1,43 +1,34 @@
-# Machine_Learning/Methods.py
-
+#Machine_Learning/Methods.py
 import json
-import pickle
-import pandas as pd
-import numpy as np
 import os
 import joblib
+import numpy as np
+import pandas as pd
 
 from xgboost import XGBRegressor
-
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    mean_absolute_error,
-    mean_squared_error,
-    r2_score,
-)
+
+from Machine_Learning.preprocessing import preprocess_dataframe
+from Machine_Learning.feature_engineering import create_features
+from Machine_Learning.evaluation import evaluate_model
 
 from Database_and_ORM.Database_Models import (
     ElectricityConsumption,
     QuestionnaireAnswers,
+    WaterConsumption,
+    GasConsumption,
+    FuelConsumption,
     User,
 )
 
-from Machine_Learning.preprocessing import preprocess_dataframe
-from Machine_Learning.feature_engineering import create_features
-
-
 # =========================================================
-# DATASET BUILDER
+# DATASET BUILDER (CLEAN + SINGLE SOURCE TRUTH)
 # =========================================================
-async def build_dataset(resource_model, target_column):
+async def build_dataset(resource_model, target_column: str):
 
     users = await User.all().values("id")
-
     user_ids = [u["id"] for u in users]
 
-    # -----------------------------------------------------
-    # CONSUMPTION DATA
-    # -----------------------------------------------------
     consumption = await resource_model.filter(
         user_id__in=user_ids
     ).values(
@@ -47,305 +38,147 @@ async def build_dataset(resource_model, target_column):
         target_column,
     )
 
-    # -----------------------------------------------------
-    # QUESTIONNAIRE DATA
-    # -----------------------------------------------------
     questionnaire = await QuestionnaireAnswers.filter(
         user_id__in=user_ids
     ).values(
         "user_id",
-        "one",
-        "two",
-        "three",
-        "four",
-        "five",
-        "six",
-        "seven",
-        "eight",
-        "nine",
-        "ten",
-        "eleven",
-        "twelve",
-        "thirteen",
-        "fourteen",
-        "fifteen",
-        "sixteen",
-        "seventeen",
-        "eighteen",
-        "nineteen",
+        "num_people",
+        "num_children",
+        "bedrooms",
+        "has_ac",
+        "has_geyser",
+        "has_iron",
+        "has_washing_machine",
+        "has_dishwasher",
+        "has_induction",
+        "has_microwave",
+        "has_kettle",
+        "has_vacuum",
+        "has_room_heater",
+        "home_area",
+        "has_pool",
+        "has_garden",
+        "vacation_days",
+        "climate",
     )
 
-    # -----------------------------------------------------
-    # DATAFRAMES
-    # -----------------------------------------------------
-    df_consumption = pd.DataFrame(consumption)
-
-    df_questionnaire = pd.DataFrame(questionnaire)
-
-    # -----------------------------------------------------
-    # MERGE
-    # -----------------------------------------------------
-    df = df_consumption.merge(
-        df_questionnaire,
+    df = pd.DataFrame(consumption).merge(
+        pd.DataFrame(questionnaire),
         on="user_id",
         how="left",
     )
 
-    # -----------------------------------------------------
-    # CLEANUP
-    # -----------------------------------------------------
-    df.fillna(0, inplace=True)
-
-    return df
+    return df.fillna(0)
 
 
 # =========================================================
-# HISTORICAL FEATURE ENGINEERING
+# OPTIONAL: SAFE HISTORICAL FEATURES (NO LEAK INTO TRAIN)
 # =========================================================
-def add_historical_features(
-    df: pd.DataFrame,
-    target_column: str,
-) -> pd.DataFrame:
+def add_historical_features(df: pd.DataFrame, target_column: str):
 
-    df = df.copy()
+    df = df.sort_values(["user_id", "year", "month"]).copy()
 
-    # -----------------------------------------------------
-    # SORT FOR TIME SERIES
-    # -----------------------------------------------------
-    df = df.sort_values(
-        by=["user_id", "year", "month"]
-    )
+    df["last_month"] = df.groupby("user_id")[target_column].shift(1)
 
-    # -----------------------------------------------------
-    # LAST MONTH CONSUMPTION
-    # -----------------------------------------------------
-    df["last_month_consumption"] = (
+    df["avg_3m"] = (
         df.groupby("user_id")[target_column]
         .shift(1)
+        .rolling(3, min_periods=1)
+        .mean()
+        .reset_index(level=0, drop=True)
     )
 
-    # -----------------------------------------------------
-    # LAST 3 MONTH AVERAGE
-    # -----------------------------------------------------
-    df["avg_last_3_months"] = (
+    df["avg_6m"] = (
         df.groupby("user_id")[target_column]
-        .transform(
-            lambda x: x.shift(1).rolling(3, min_periods=1).mean()
-        )
+        .shift(1)
+        .rolling(6, min_periods=1)
+        .mean()
+        .reset_index(level=0, drop=True)
     )
 
-    # -----------------------------------------------------
-    # LAST 6 MONTH AVERAGE
-    # -----------------------------------------------------
-    df["avg_last_6_months"] = (
-        df.groupby("user_id")[target_column]
-        .transform(
-            lambda x: x.shift(1).rolling(6, min_periods=1).mean()
-        )
+    df["growth"] = (
+        (df[target_column] - df["last_month"])
+        / df["last_month"].replace(0, 1)
     )
 
-    # -----------------------------------------------------
-    # GROWTH RATE
-    # -----------------------------------------------------
-    df["consumption_growth_rate"] = (
-        (
-            df[target_column]
-            - df["last_month_consumption"]
-        )
-        /
-        (
-            df["last_month_consumption"].replace(0, 1)
-        )
-    )
-
-    # -----------------------------------------------------
-    # YEARLY USER AVERAGE
-    # -----------------------------------------------------
-    df["yearly_avg_consumption"] = (
-        df.groupby("user_id")[target_column]
-        .transform("mean")
-    )
-
-    # -----------------------------------------------------
-    # CLEANUP
-    # -----------------------------------------------------
-    df.replace([np.inf, -np.inf], 0, inplace=True)
-
-    df.fillna(0, inplace=True)
-
-    return df
+    return df.replace([np.inf, -np.inf], 0).fillna(0)
 
 
 # =========================================================
-# MODEL EVALUATION
+# MODEL EVALUATION WRAPPER
 # =========================================================
-def evaluate_model(y_true, y_pred):
-
-    mae = mean_absolute_error(y_true, y_pred)
-
-    mse = mean_squared_error(y_true, y_pred)
-
-    rmse = np.sqrt(mse)
-
-    r2 = r2_score(y_true, y_pred)
-
-    print("\n========== MODEL EVALUATION ==========")
-
-    print(f"MAE  : {mae}")
-
-    print(f"MSE  : {mse}")
-
-    print(f"RMSE : {rmse}")
-
-    print(f"R2   : {r2}")
-
-    print("======================================\n")
-
-    return {
-        "mae": float(mae),
-        "mse": float(mse),
-        "rmse": float(rmse),
-        "r2": float(r2),
-    }
+def evaluate(y_true, y_pred):
+    return evaluate_model(y_true, y_pred)
 
 
 # =========================================================
-# TRAINING PIPELINE
+# CLEAN TRAINING PIPELINE (MAIN FIX)
 # =========================================================
-async def retrain_model(resource_type: str):
+async def retrain_model(resource_type: str, config_path: str):
 
-    # -----------------------------------------------------
-    # LOAD CONFIG
-    # -----------------------------------------------------
-    with open(
-        "Machine_Learning/Machine_Learning_Parameter_Schemas.json",
-        "r",
-    ) as f:
-
+    with open(config_path, "r") as f:
         config_all = json.load(f)
 
     config = config_all.get(resource_type)
 
     if not config:
-        raise ValueError("Invalid resource type config")
+        raise ValueError("Invalid resource type")
 
-    # -----------------------------------------------------
-    # PATHS
-    # -----------------------------------------------------
     model_dir = config["Directory_Path"]
-
     os.makedirs(model_dir, exist_ok=True)
 
-    model_path = os.path.join(
-        model_dir,
-        config["Trained_Model_Name"],
-    )
-
-    features_path = os.path.join(
-        model_dir,
-        config["Features_File_Name"],
-    )
-
+    model_path = os.path.join(model_dir, config["Trained_Model_Name"])
+    features_path = os.path.join(model_dir, config["Features_File_Name"])
     target_column = config["Column_Name"]
 
-    resource_model = globals()[config["Database_Name"]]
+    # =====================================================
+    # FIXED: explicit model mapping (NO globals())
+    # =====================================================
+    model_map = {
+        "ElectricityConsumption": ElectricityConsumption,
+        "WaterConsumption": WaterConsumption,
+        "GasConsumption": GasConsumption,
+        "FuelConsumption": FuelConsumption,
+    }
 
-    # -----------------------------------------------------
-    # LOAD DATA
-    # -----------------------------------------------------
+    resource_model = model_map.get(config["Database_Name"])
+
+    if not resource_model:
+        raise ValueError("Invalid database model mapping")
+
+    # =====================================================
+    # DATA LOADING
+    # =====================================================
     print("Loading dataset...")
+    df = await build_dataset(resource_model, target_column)
 
-    df = await build_dataset(
-        resource_model,
-        target_column,
-    )
-
-    # -----------------------------------------------------
-    # PREPROCESSING
-    # -----------------------------------------------------
-    print("Preprocessing dataset...")
-
+    # =====================================================
+    # PREPROCESSING (ONLY ONCE)
+    # =====================================================
+    print("Preprocessing...")
     df = preprocess_dataframe(df)
 
-    # -----------------------------------------------------
-    # FEATURE ENGINEERING
-    # -----------------------------------------------------
-    print("Creating features...")
-
+    # =====================================================
+    # FEATURE ENGINEERING (ONLY ONE PIPELINE)
+    # =====================================================
+    print("Feature engineering...")
     df = create_features(df)
 
-    # -----------------------------------------------------
-    # HISTORICAL FEATURES
-    # -----------------------------------------------------
-    print("Creating historical features...")
+    # =====================================================
+    # OPTIONAL: HISTORICAL FEATURES (SAFE ADDITION)
+    # =====================================================
+    df = add_historical_features(df, target_column)
 
-    df = add_historical_features(
-        df,
-        target_column,
-    )
-
-    # -----------------------------------------------------
-    # TARGET CLEANING
-    # -----------------------------------------------------
-    df[target_column] = np.clip(
-        df[target_column],
-        df[target_column].quantile(0.01),
-        df[target_column].quantile(0.99),
-    )
-
-    # -----------------------------------------------------
-    # CYCLICAL MONTH FEATURES
-    # -----------------------------------------------------
-    df["month_sin"] = np.sin(
-        2 * np.pi * df["month"] / 12
-    )
-
-    df["month_cos"] = np.cos(
-        2 * np.pi * df["month"] / 12
-    )
-
-    # -----------------------------------------------------
-    # ONE HOT ENCODING
-    # -----------------------------------------------------
-    categorical_columns = [
-        "nineteen",
-        "seventeen",
-    ]
-
-    df = pd.get_dummies(
-        df,
-        columns=categorical_columns,
-        drop_first=False,
-    )
-
-    # -----------------------------------------------------
-    # DROP UNUSED COLUMNS
-    # -----------------------------------------------------
-    drop_columns = [
-        target_column,
-    ]
-
-    if "user_id" in df.columns:
-        drop_columns.append("user_id")
-
-    # -----------------------------------------------------
-    # FEATURES / TARGET
-    # -----------------------------------------------------
-    X = df.drop(columns=drop_columns)
-
+    # =====================================================
+    # TARGET CLEANING (NO LEAKAGE)
+    # =====================================================
     y = np.log1p(df[target_column])
 
-    # -----------------------------------------------------
-    # STORE FEATURE NAMES
-    # -----------------------------------------------------
-    feature_names = X.columns.tolist()
+    X = df.drop(columns=[target_column, "user_id"], errors="ignore")
 
-    with open(features_path, "w") as f:
-        json.dump(feature_names, f)
-
-    # -----------------------------------------------------
+    # =====================================================
     # TRAIN TEST SPLIT
-    # -----------------------------------------------------
+    # =====================================================
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -354,59 +187,40 @@ async def retrain_model(resource_type: str):
     )
 
     # =====================================================
-    # XGBOOST MODEL
+    # MODEL
     # =====================================================
-    print("Training XGBoost model...")
-
     model = XGBRegressor(
-        n_estimators=300,
+        n_estimators=400,
         learning_rate=0.05,
         max_depth=6,
-        min_child_weight=3,
         subsample=0.8,
         colsample_bytree=0.8,
         objective="reg:squarederror",
         random_state=42,
     )
 
-    # -----------------------------------------------------
-    # TRAIN
-    # -----------------------------------------------------
-    model.fit(
-        X_train,
-        y_train,
-    )
+    print("Training model...")
+    model.fit(X_train, y_train)
 
-    # -----------------------------------------------------
-    # PREDICT
-    # -----------------------------------------------------
-    predictions = model.predict(X_test)
+    # =====================================================
+    # PREDICTION (SAFE INVERSION)
+    # =====================================================
+    preds = np.expm1(model.predict(X_test))
+    y_true = np.expm1(y_test)
 
-    predictions = np.expm1(predictions)
+    metrics = evaluate(y_true, preds)
 
-    y_test_actual = np.expm1(y_test)
+    # =====================================================
+    # SAVE ARTIFACTS (STRICT FORMAT)
+    # =====================================================
+    feature_names = X.columns.tolist()
 
-    # -----------------------------------------------------
-    # EVALUATION
-    # -----------------------------------------------------
-    metrics = evaluate_model(
-        y_test_actual,
-        predictions,
-    )
+    with open(features_path, "w") as f:
+        json.dump({"features": feature_names}, f, indent=4)
 
-    # -----------------------------------------------------
-    # SAVE MODEL
-    # -----------------------------------------------------
-    print("Saving model artifacts...")
+    joblib.dump(model, model_path)
 
-    joblib.dump(
-        model,
-        model_path,
-    )
-
-    print(
-        f"\n✅ XGBoost model saved successfully at: {model_path}"
-    )
+    print(f"Model saved at: {model_path}")
 
     return {
         "status": "success",
