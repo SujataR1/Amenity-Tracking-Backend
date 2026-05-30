@@ -1,32 +1,22 @@
 import logging
-import os
 import re
+from urllib.parse import urlparse
 
-from tortoise import Tortoise
-from tortoise.exceptions import ValidationError
 from decouple import config
 from dotenv import load_dotenv
+from tortoise import Tortoise
+from tortoise.exceptions import ValidationError
 
 load_dotenv()
 
 # =========================================================
 # LOGGING
 # =========================================================
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
-# Tortoise ORM logs
-logging.getLogger("tortoise").setLevel(logging.DEBUG)
+logging.getLogger("tortoise").setLevel(logging.INFO)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
-# aiomysql logs
-logging.getLogger("aiomysql").setLevel(logging.DEBUG)
-
-# asyncio logs
-logging.getLogger("asyncio").setLevel(logging.DEBUG)
-
-# =========================================================
-# SSL CERTIFICATE PATH
-# =========================================================
-DB_CA_PATH = os.path.abspath(os.getenv("DB_CA_PATH"))
 
 # =========================================================
 # VALIDATION
@@ -39,50 +29,33 @@ def validate_pan(value: str):
             "PAN must follow the format `AAAAANNNNA`"
         )
 
+
 # =========================================================
 # INIT DB
 # =========================================================
 async def init_db():
+    database_url = config("DATABASE_URL")
+    parsed_url = urlparse(database_url)
 
     print("\n========== DATABASE DEBUG ==========")
-    print("DB_HOST =", config("DB_HOST"))
-    print("DB_PORT =", config("DB_PORT"))
-    print("DB_USER =", config("DB_USER"))
-    print("DB_NAME =", config("DB_NAME"))
-    print("DB_CA_PATH =", DB_CA_PATH)
+    print("DB_ENGINE = PostgreSQL / asyncpg")
+    print("DB_HOST =", parsed_url.hostname)
+    print("DB_PORT =", parsed_url.port or 5432)
+    print("DB_USER =", parsed_url.username)
+    print("DB_NAME =", parsed_url.path.lstrip("/"))
     print("====================================\n")
 
     await Tortoise.init(
-        config={
-            "connections": {
-                "default": {
-                    "engine": "tortoise.backends.mysql",
-                    "credentials": {
-                        "host": config("DB_HOST"),
-                        "port": int(config("DB_PORT")),
-                        "user": config("DB_USER"),
-                        "password": config("DB_PASSWORD"),
-                        "database": config("DB_NAME"),
-                        "ssl": {
-                            "ca": DB_CA_PATH
-                        },
-                    },
-                }
-            },
-            "apps": {
-                "models": {
-                    "models": ["Database_and_ORM.Database_Models"],
-                    "default_connection": "default",
-                }
-            },
-        }
+        db_url=database_url,
+        modules={"models": ["Database_and_ORM.Database_Models"]},
     )
 
     print("Tortoise initialized successfully")
 
-    await Tortoise.generate_schemas()
+    await Tortoise.generate_schemas(safe=True)
 
     print("Schemas generated successfully")
+
 
 # =========================================================
 # CLOSE DB
