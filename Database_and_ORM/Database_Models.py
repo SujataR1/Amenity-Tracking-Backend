@@ -181,7 +181,7 @@ class APIActivityLog(Model):
 
     error = fields.TextField(null=True)
 
-    error_location = fields.CharField(
+    error_location = fields.TextField(
         null=True,
     )
 
