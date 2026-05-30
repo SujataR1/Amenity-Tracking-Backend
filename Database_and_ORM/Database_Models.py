@@ -182,7 +182,6 @@ class APIActivityLog(Model):
     error = fields.TextField(null=True)
 
     error_location = fields.CharField(
-        max_length=255,
         null=True,
     )
 
