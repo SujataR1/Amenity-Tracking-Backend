@@ -3,8 +3,17 @@ from tortoise.models import Model
 
 from Users.Data_Schemas import RoleEnum, OTPTypeEnum
 from Questionnaire.Data_Schemas import MonthEnum, ClimateEnum
+from enum import Enum
+from Database_and_ORM.Enums import ConsumptionType
 
 
+
+
+class ConsumptionType(str, Enum):
+    ELECTRICITY = "electricity"
+    WATER = "water"
+    GAS = "gas"
+    FUEL = "fuel"
 # =========================================================
 # USER MODEL
 # =========================================================
@@ -365,3 +374,31 @@ class FuelConsumption(Model):
             "month",
             "year",
         )
+
+class ConsumptionRecord(Model):
+    id = fields.UUIDField(pk=True)
+
+    user = fields.ForeignKeyField(
+        "models.User",
+        related_name="consumption_records",
+        on_delete=fields.CASCADE,
+    )
+
+    type = fields.CharEnumField(ConsumptionType)
+
+    month = fields.CharEnumField(MonthEnum)
+    year = fields.IntField()
+
+    consumption_value = fields.FloatField()
+
+    bill_amount = fields.FloatField(null=True)
+
+    predicted_consumption = fields.FloatField(null=True)
+    predicted_bill = fields.FloatField(null=True)
+
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "consumption_record"
+        unique_together = ("user", "type", "month", "year")

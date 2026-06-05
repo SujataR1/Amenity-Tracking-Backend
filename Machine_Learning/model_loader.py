@@ -4,93 +4,239 @@ import os
 import json
 import joblib
 
+from functools import lru_cache
+
 from Machine_Learning.constants import (
-    MODEL_PATH,
-    FEATURES_PATH,
+    get_resource_config,
 )
 
 
 # =========================================================
-# LOAD TRAINED MODEL
+# RESOURCE VALIDATION
 # =========================================================
-def load_model():
+def validate_resource(resource):
 
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"Model file not found at:\n{MODEL_PATH}"
+    if not isinstance(resource, str):
+        raise TypeError(
+            "resource must be string"
         )
 
-    model = joblib.load(MODEL_PATH)
-
-    return model
+    return (
+        resource
+        .strip()
+        .lower()
+    )
 
 
 # =========================================================
-# LOAD FEATURE NAMES (ROBUST FORMAT HANDLING)
+# LOAD MODEL
 # =========================================================
-def load_feature_names():
+@lru_cache(maxsize=8)
+def load_model(resource):
 
-    if not os.path.exists(FEATURES_PATH):
+    resource = validate_resource(
+        resource
+    )
+
+    cfg = get_resource_config(
+        resource
+    )
+
+    model_path = cfg[
+        "model_path"
+    ]
+
+    if not os.path.exists(
+        model_path
+    ):
         raise FileNotFoundError(
-            f"Features file not found at:\n{FEATURES_PATH}"
+            f"Model not found:\n{model_path}"
         )
 
-    with open(FEATURES_PATH, "r") as f:
-        data = json.load(f)
+    return joblib.load(
+        model_path
+    )
 
-    # =====================================================
-    # HANDLE BOTH OLD + NEW FORMATS SAFELY
-    # =====================================================
 
-    # NEW FORMAT: {"features": [...]}
-    if isinstance(data, dict) and "features" in data:
-        feature_names = data["features"]
+# =========================================================
+# LOAD FEATURE NAMES
+# =========================================================
+@lru_cache(maxsize=8)
+def load_feature_names(resource):
 
-    # OLD FORMAT: [...]
-    elif isinstance(data, list):
-        feature_names = data
+    resource = validate_resource(
+        resource
+    )
+
+    cfg = get_resource_config(
+        resource
+    )
+
+    feature_path = cfg[
+        "features_path"
+    ]
+
+    if not os.path.exists(
+        feature_path
+    ):
+        raise FileNotFoundError(
+            f"Features file missing:\n{feature_path}"
+        )
+
+    with open(
+        feature_path,
+        "r",
+    ) as f:
+
+        data = json.load(
+            f
+        )
+
+    # -------------------------
+    # SUPPORT:
+    # {"features":[]}
+    # []
+    # -------------------------
+
+    if (
+        isinstance(
+            data,
+            dict
+        )
+        and "features"
+        in data
+    ):
+
+        features = (
+            data[
+                "features"
+            ]
+        )
+
+    elif isinstance(
+        data,
+        list
+    ):
+
+        features = data
 
     else:
+
         raise ValueError(
-            "Invalid feature file format. Expected dict with 'features' or list."
+            "Invalid feature file"
         )
 
-    # Safety check
-    if not feature_names:
-        raise ValueError("Feature list is empty.")
+    if (
+        not features
+    ):
 
-    return feature_names
+        raise ValueError(
+            "Empty features"
+        )
+
+    return features
 
 
 # =========================================================
-# LOAD ALL ARTIFACTS
+# LOAD ARTIFACTS
 # =========================================================
-def load_model_artifacts():
-
-    model = load_model()
-    feature_names = load_feature_names()
+def load_model_artifacts(
+    resource
+):
 
     return {
-        "model": model,
-        "feature_names": feature_names,
+
+        "resource":
+            resource,
+
+        "model":
+            load_model(
+                resource
+            ),
+
+        "feature_names":
+            load_feature_names(
+                resource
+            ),
     }
 
 
 # =========================================================
-# TEST BLOCK
+# EXISTS CHECK
+# =========================================================
+def model_exists(
+    resource
+):
+
+    try:
+
+        cfg = (
+            get_resource_config(
+                resource
+            )
+        )
+
+        return os.path.exists(
+            cfg[
+                "model_path"
+            ]
+        )
+
+    except Exception:
+
+        return False
+
+
+# =========================================================
+# TEST
 # =========================================================
 if __name__ == "__main__":
 
-    artifacts = load_model_artifacts()
+    RESOURCE = (
+        "electricity"
+    )
 
-    print("\n========== MODEL ARTIFACTS ==========\n")
+    print(
+        "\nLoading..."
+    )
 
-    print("Model Loaded Successfully:")
-    print(type(artifacts["model"]))
+    artifacts = (
+        load_model_artifacts(
+            RESOURCE
+        )
+    )
 
-    print(f"\nTotal Features: {len(artifacts['feature_names'])}")
+    print(
+        "\nResource:",
+        artifacts[
+            "resource"
+        ]
+    )
 
-    print("\nFirst 10 Features:\n")
-    print(artifacts["feature_names"][:10])
+    print(
+        "\nModel:",
+        type(
+            artifacts[
+                "model"
+            ]
+        )
+    )
 
-    print("\n====================================\n")
+    print(
+        "\nFeatures:",
+        len(
+            artifacts[
+                "feature_names"
+            ]
+        )
+    )
+
+    print(
+        "\nPreview:"
+    )
+
+    print(
+        artifacts[
+            "feature_names"
+        ][:10]
+    )

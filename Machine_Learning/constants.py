@@ -1,172 +1,193 @@
-# Machine_Learning/constants.py
+import os
+
 
 # =========================================================
-# MODEL VERSIONING
+# GLOBAL SETTINGS
 # =========================================================
 MODEL_VERSION = "v1"
-
-
-# =========================================================
-# BASE MODEL DIRECTORY
-# =========================================================
-MODEL_DIRECTORY = "Machine_Learning/model_versions"
-
-
-# =========================================================
-# MODEL TYPE
-# =========================================================
 MODEL_TYPE = "xgboost"
 
-
-# =========================================================
-# MAIN MODEL FILE
-# =========================================================
-# XGBoost model saved using joblib
-# Example:
-# electricity_xgboost_v1.pkl
-# =========================================================
-MODEL_FILE_NAME = (
-    f"electricity_{MODEL_TYPE}_{MODEL_VERSION}.pkl"
-)
-
-MODEL_PATH = (
-    f"{MODEL_DIRECTORY}/{MODEL_FILE_NAME}"
-)
-
-
-# =========================================================
-# FEATURE FILE
-# =========================================================
-FEATURES_FILE_NAME = (
-    f"features_{MODEL_VERSION}.json"
-)
-
-FEATURES_PATH = (
-    f"{MODEL_DIRECTORY}/{FEATURES_FILE_NAME}"
-)
-
-
-# =========================================================
-# TRAINING DATASET
-# =========================================================
-DATASET_FILE_NAME = (
-    "electricity_sample_data_500_rows.csv"
-)
-
-DATASET_PATH = (
-    f"Machine_Learning/datasets/{DATASET_FILE_NAME}"
-)
-
-
-# =========================================================
-# TARGET COLUMN
-# =========================================================
-TARGET_COLUMN = "electricity_consumption"
-
-
-# =========================================================
-# TRAIN / TEST CONFIG
-# =========================================================
-TEST_SIZE = 0.2
-
+TEST_SIZE = 0.20
 RANDOM_STATE = 42
 
 
 # =========================================================
-# XGBOOST TRAINING PARAMETERS
+# DIRECTORIES
+# =========================================================
+BASE_DIR = os.path.dirname(__file__)
+
+MODEL_DIRECTORY = os.path.join(
+    BASE_DIR,
+    "model_versions",
+)
+
+DATASET_DIRECTORY = os.path.join(
+    BASE_DIR,
+    "datasets",
+)
+
+
+# =========================================================
+# SUPPORTED
+# =========================================================
+SUPPORTED_RESOURCE_TYPES = [
+    "electricity",
+    "water",
+    "gas",
+    "fuel",
+]
+
+
+# =========================================================
+# RESOURCE CONFIG
+# =========================================================
+RESOURCE_CONFIG = {
+
+    "electricity": {
+        "enabled": True,
+        "target_column": "electricity_consumption",
+        "dataset": "electricity_sample_data_500_rows.csv",
+        "model": f"electricity_{MODEL_TYPE}_{MODEL_VERSION}.pkl",
+        "features": f"electricity_features_{MODEL_VERSION}.json",
+    },
+
+    "water": {
+        "enabled": True,
+        "target_column": "total_liters",
+        "dataset": "water_6_month_usage_dataset_3000.csv",
+        "model": f"water_{MODEL_TYPE}_{MODEL_VERSION}.pkl",
+        "features": f"water_features_{MODEL_VERSION}.json",
+    },
+
+    "gas": {
+        "enabled": False,
+        "target_column": "",
+        "dataset": "",
+        "model": f"gas_{MODEL_TYPE}_{MODEL_VERSION}.pkl",
+        "features": f"gas_features_{MODEL_VERSION}.json",
+    },
+
+    "fuel": {
+        "enabled": True,
+        "target_column": "total_fuel_liters",
+        "dataset": "fuel_6_month_historical_dataset_3000.csv",
+        "model": f"fuel_{MODEL_TYPE}_{MODEL_VERSION}.pkl",
+        "features": f"fuel_features_{MODEL_VERSION}.json",
+    },
+}
+
+
+# =========================================================
+# CONFIG RESOLVER
+# =========================================================
+def get_resource_config(resource_type):
+
+    resource = str(resource_type).strip().lower()
+
+    if resource not in RESOURCE_CONFIG:
+        raise ValueError(
+            f"Unsupported resource: {resource}"
+        )
+
+    cfg = RESOURCE_CONFIG[resource]
+
+    if not cfg["enabled"]:
+        raise ValueError(
+            f"{resource} training disabled "
+            f"(dataset/target not prepared)"
+        )
+
+    return {
+        "resource": resource,
+
+        "target_column":
+            cfg["target_column"],
+
+        "dataset_path":
+            os.path.join(
+                DATASET_DIRECTORY,
+                cfg["dataset"],
+            ),
+
+        "model_path":
+            os.path.join(
+                MODEL_DIRECTORY,
+                cfg["model"],
+            ),
+
+        "features_path":
+            os.path.join(
+                MODEL_DIRECTORY,
+                cfg["features"],
+            ),
+    }
+
+
+# =========================================================
+# TRAIN CONFIG
 # =========================================================
 XGBOOST_PARAMS = {
-
-    # -----------------------------------------------------
-    # OBJECTIVE
-    # -----------------------------------------------------
     "objective": "reg:squarederror",
-
-    # -----------------------------------------------------
-    # BOOSTING
-    # -----------------------------------------------------
-    "n_estimators": 500,
-
+    "n_estimators": 600,
     "learning_rate": 0.03,
-
-    "max_depth": 6,
-
+    "max_depth": 5,
     "min_child_weight": 3,
-
-    # -----------------------------------------------------
-    # REGULARIZATION
-    # -----------------------------------------------------
     "gamma": 0.1,
-
     "reg_alpha": 0.1,
-
-    "reg_lambda": 1.0,
-
-    # -----------------------------------------------------
-    # SAMPLING
-    # -----------------------------------------------------
+    "reg_lambda": 1.5,
     "subsample": 0.8,
-
     "colsample_bytree": 0.8,
-
-    # -----------------------------------------------------
-    # PERFORMANCE
-    # -----------------------------------------------------
     "random_state": RANDOM_STATE,
-
     "n_jobs": -1,
 }
 
 
 # =========================================================
-# PREDICTION SETTINGS
+# DEFAULTS
 # =========================================================
-DEFAULT_BILLING_DAYS = 30
-
-DEFAULT_CLIMATE = "moderate"
-
-DEFAULT_MONTH = 1
-
-DEFAULT_YEAR = 2025
-
-
-# =========================================================
-# ELECTRICITY BILL SLABS
-# =========================================================
-BILL_SLABS = {
-
-    "slab_1_limit": 100,
-    "slab_1_rate": 5,
-
-    "slab_2_limit": 300,
-    "slab_2_rate": 7,
-
-    "slab_3_rate": 10,
+DEFAULT_VALUES = {
+    "billing_days": 30,
+    "month": 1,
+    "year": 2026,
+    "climate": "moderate",
 }
 
 
 # =========================================================
-# USAGE LEVEL THRESHOLDS
+# BILLING
 # =========================================================
-LOW_USAGE_THRESHOLD = 200
+BILL_RULES = {
 
-MODERATE_USAGE_THRESHOLD = 500
+    "electricity": {
+        "slab_1_limit": 100,
+        "slab_1_rate": 5,
+        "slab_2_limit": 300,
+        "slab_2_rate": 7,
+        "slab_3_rate": 10,
+    },
+
+    "water": {
+        "rate": 0.03,
+    },
+
+    "gas": {
+        "rate": 25,
+    },
+
+    "fuel": {
+        "rate": 110,
+    },
+}
 
 
 # =========================================================
-# LOGGING FLAGS
+# THRESHOLDS
 # =========================================================
+USAGE_THRESHOLDS = {
+    "low": 200,
+    "moderate": 500,
+}
+
+
 ENABLE_TRAINING_LOGS = True
-
 ENABLE_PREDICTION_LOGS = True
-
-
-# =========================================================
-# FUTURE SUPPORT
-# =========================================================
-SUPPORTED_RESOURCE_TYPES = [
-    "Electricity",
-    "Water",
-    "Gas",
-    "Fuel",
-]

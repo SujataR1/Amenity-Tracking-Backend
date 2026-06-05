@@ -1,118 +1,289 @@
 # Machine_Learning/predict.py
 
 import json
-import joblib
 import pandas as pd
 import numpy as np
 
-from functools import lru_cache
+from Machine_Learning.preprocessing import (
+    preprocess_dataframe,
+)
 
-from Machine_Learning.constants import MODEL_PATH, FEATURES_PATH
-from Machine_Learning.preprocessing import preprocess_dataframe
-from Machine_Learning.feature_engineering import create_features
+from Machine_Learning.feature_engineering import (
+    create_features,
+)
 
+from Machine_Learning.model_loader import (
+    load_model_artifacts,
+)
 
-# =========================================================
-# BILL CALCULATION ENGINE
-# =========================================================
-def calculate_electricity_bill(units: float):
-
-    units = max(units, 0)
-
-    if units <= 100:
-        return units * 5
-    elif units <= 300:
-        return (100 * 5) + (units - 100) * 7
-    else:
-        return (100 * 5) + (200 * 7) + (units - 300) * 10
+from Machine_Learning.constants import (
+    BILL_RULES,
+    USAGE_THRESHOLDS,
+)
 
 
 # =========================================================
-# LOAD MODEL (CACHE FIX)
+# BILL ENGINE
 # =========================================================
-@lru_cache(maxsize=1)
-def load_model():
-    return joblib.load(MODEL_PATH)
+def calculate_bill(
+    resource,
+    units,
+):
+
+    units = max(
+        float(units),
+        0,
+    )
+
+    rules = BILL_RULES.get(
+        resource,
+        {},
+    )
+
+    if resource == "electricity":
+
+        if units <= rules["slab_1_limit"]:
+
+            return (
+                units
+                * rules["slab_1_rate"]
+            )
+
+        elif units <= rules["slab_2_limit"]:
+
+            return (
+
+                rules["slab_1_limit"]
+                *
+                rules["slab_1_rate"]
+
+                +
+
+                (
+                    units
+                    -
+                    rules["slab_1_limit"]
+                )
+
+                *
+
+                rules["slab_2_rate"]
+            )
+
+        return (
+
+            rules["slab_1_limit"]
+            *
+            rules["slab_1_rate"]
+
+            +
+
+            (
+                rules["slab_2_limit"]
+                -
+                rules["slab_1_limit"]
+            )
+
+            *
+
+            rules["slab_2_rate"]
+
+            +
+
+            (
+                units
+                -
+                rules["slab_2_limit"]
+            )
+
+            *
+
+            rules["slab_3_rate"]
+        )
+
+    if "rate" in rules:
+
+        return (
+            units
+            *
+            rules["rate"]
+        )
+
+    return 0
 
 
 # =========================================================
-# LOAD FEATURES (STRICT FORMAT ONLY)
+# FEATURE PIPELINE
 # =========================================================
-@lru_cache(maxsize=1)
-def load_feature_names():
+def build_features(
+    df,
+):
 
-    with open(FEATURES_PATH, "r") as f:
-        data = json.load(f)
+    df = preprocess_dataframe(
+        df
+    )
 
-    if isinstance(data, dict) and "features" in data:
-        return data["features"]
-
-    raise ValueError("Invalid feature file format. Expected {'features': [...]}.")
-
-
-# =========================================================
-# FEATURE PIPELINE (MUST MATCH TRAINING EXACTLY)
-# =========================================================
-def build_features(df: pd.DataFrame):
-
-    df = preprocess_dataframe(df)
-    df = create_features(df)
+    df = create_features(
+        df
+    )
 
     return df
 
 
 # =========================================================
-# CORE PREDICTION FUNCTION
+# USAGE LABEL
 # =========================================================
-def predict_consumption(input_data: dict):
+def get_usage_level(
+    value,
+):
 
-    model = load_model()
-    feature_names = load_feature_names()
+    if value < USAGE_THRESHOLDS["low"]:
 
-    # ----------------------------
-    # INPUT → DATAFRAME
-    # ----------------------------
-    df = pd.DataFrame([input_data])
+        return "Low"
 
-    # ----------------------------
-    # FEATURE ENGINEERING
-    # ----------------------------
-    df = build_features(df)
+    elif value < USAGE_THRESHOLDS["moderate"]:
 
-    # ----------------------------
-    # SAFE ALIGNMENT (IMPORTANT FIX)
-    # ----------------------------
-    df = df.reindex(columns=feature_names, fill_value=0)
+        return "Moderate"
 
-    # ----------------------------
+    return "High"
+
+
+# =========================================================
+# PREDICTION
+# =========================================================
+def predict_consumption(
+    resource,
+    input_data,
+):
+
+    resource = (
+        resource
+        .strip()
+        .lower()
+    )
+
+    artifacts = (
+        load_model_artifacts(
+            resource
+        )
+    )
+
+    model = artifacts[
+        "model"
+    ]
+
+    feature_names = artifacts[
+        "feature_names"
+    ]
+
+    # ---------------------
+    # INPUT
+    # ---------------------
+    df = pd.DataFrame(
+        [
+            input_data
+        ]
+    )
+
+    # ---------------------
+    # EXACT TRAIN PIPELINE
+    # ---------------------
+    df = build_features(
+        df
+    )
+
+    # ---------------------
+    # STRICT ALIGNMENT
+    # ---------------------
+    df = (
+        df
+        .reindex(
+            columns=feature_names,
+            fill_value=0,
+        )
+    )
+
+    # ---------------------
     # PREDICT
-    # ----------------------------
-    pred_log = model.predict(df)[0]
+    # ---------------------
+    pred_log = (
+        model.predict(
+            df
+        )[0]
+    )
 
-    # ----------------------------
-    # SAFE LOG TRANSFORM HANDLING
-    # ----------------------------
-    pred = np.expm1(pred_log) if pred_log > 0 else max(pred_log, 0)
+    prediction = (
+        float(
+            max(
+                np.expm1(
+                    pred_log
+                ),
+                0,
+            )
+        )
+    )
 
-    pred = float(max(pred, 0))
-
-    # ----------------------------
-    # BILL CALCULATION
-    # ----------------------------
-    bill = calculate_electricity_bill(pred)
-
-    # ----------------------------
-    # USAGE LEVEL
-    # ----------------------------
-    if pred < 200:
-        level = "Low"
-    elif pred < 500:
-        level = "Moderate"
-    else:
-        level = "High"
+    bill = (
+        calculate_bill(
+            resource,
+            prediction,
+        )
+    )
 
     return {
-        "predicted_electricity_consumption": round(pred, 2),
-        "estimated_bill_amount": round(float(bill), 2),
-        "usage_level": level,
+
+        "resource":
+            resource,
+
+        "predicted_consumption":
+            round(
+                prediction,
+                2,
+            ),
+
+        "estimated_bill":
+            round(
+                bill,
+                2,
+            ),
+
+        "usage_level":
+            get_usage_level(
+                prediction
+            ),
     }
+
+
+# =========================================================
+# TEST
+# =========================================================
+if __name__ == "__main__":
+
+    sample = {
+
+        "num_people": 5,
+
+        "bedrooms": 3,
+
+        "has_ac": True,
+
+        "vacation_days": 2,
+
+        "month": "June",
+
+        "climate": "hot",
+    }
+
+    result = (
+        predict_consumption(
+            "electricity",
+            sample,
+        )
+    )
+
+    print(
+        json.dumps(
+            result,
+            indent=4,
+        )
+    )

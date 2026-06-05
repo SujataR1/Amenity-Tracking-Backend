@@ -5,39 +5,61 @@ import numpy as np
 
 
 # =========================================================
-# SAFE BOOLEAN CONVERSION
+# GLOBAL FEATURE CONTRACT (IMPORTANT FIX)
 # =========================================================
-def safe_bool(value):
-    if pd.isna(value):
-        return 0
+COMMON_NUMERIC_FEATURES = [
+    "num_people",
+    "num_children",
+    "bedrooms",
+    "home_area",
+    "vacation_days",
+    "year",
+    "month",
+]
 
-    if isinstance(value, str):
-        return 1 if value.strip().lower() in ["true", "1", "yes", "y", "on"] else 0
-
-    return int(bool(value))
+COMMON_BOOL_FEATURES = [
+    "has_ac",
+    "has_geyser",
+    "has_iron",
+    "has_washing_machine",
+    "has_dishwasher",
+    "has_induction",
+    "has_microwave",
+    "has_kettle",
+    "has_vacuum",
+    "has_room_heater",
+    "has_pool",
+    "has_garden",
+]
 
 
 # =========================================================
-# SAFE CLIMATE ENCODING
+# SAFE BOOLEAN CONVERSION (FIXED)
 # =========================================================
-def encode_climate(value):
-    mapping = {
-        "cold": 0,
-        "moderate": 1,
-        "hot": 2,
-    }
+def safe_bool_series(series: pd.Series):
+    if series is None:
+        return pd.Series(0)
 
-    if pd.isna(value):
-        return 1
-
-    return mapping.get(str(value).strip().lower(), 1)
+    return series.fillna(0).apply(
+        lambda x: 1 if str(x).strip().lower() in ["true", "1", "yes", "y", "on"] else 0
+    )
 
 
 # =========================================================
-# MONTH CYCLICAL ENCODING
+# CLIMATE ENCODING
+# =========================================================
+def encode_climate_series(series: pd.Series):
+    mapping = {"cold": 0, "moderate": 1, "hot": 2}
+
+    return series.fillna("moderate").apply(
+        lambda x: mapping.get(str(x).strip().lower(), 1)
+    )
+
+
+# =========================================================
+# MONTH FEATURES (CYCLICAL)
 # =========================================================
 def add_month_features(df: pd.DataFrame):
-
     df = df.copy()
 
     df["month"] = pd.to_numeric(df.get("month", 1), errors="coerce").fillna(1)
@@ -49,98 +71,51 @@ def add_month_features(df: pd.DataFrame):
 
 
 # =========================================================
-# MAIN FEATURE ENGINEERING
+# MAIN FEATURE ENGINEERING PIPELINE (FIXED + STABLE)
 # =========================================================
 def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
     # -----------------------------------------------------
-    # BOOLEAN FEATURES
+    # NUMERIC FEATURES (SAFE)
     # -----------------------------------------------------
-    bool_cols = [
-        "has_ac",
-        "has_geyser",
-        "has_iron",
-        "has_washing_machine",
-        "has_dishwasher",
-        "has_induction",
-        "has_microwave",
-        "has_kettle",
-        "has_vacuum",
-        "has_room_heater",
-        "has_pool",
-        "has_garden",
-    ]
-
-    for col in bool_cols:
-        df[col] = df.get(col, 0).apply(safe_bool)
+    for col in COMMON_NUMERIC_FEATURES:
+        df[col] = pd.to_numeric(df.get(col, 0), errors="coerce").fillna(0)
 
     # -----------------------------------------------------
-    # NUMERIC FEATURES
+    # BOOLEAN FEATURES (SAFE SERIES-BASED FIX)
     # -----------------------------------------------------
-    numeric_defaults = {
-        "num_people": 1,
-        "num_children": 0,
-        "bedrooms": 1,
-        "home_area": 0,
-        "vacation_days": 0,
-        "year": 2025,
-        "month": 1,
-    }
-
-    for col, default in numeric_defaults.items():
-        df[col] = pd.to_numeric(df.get(col, default), errors="coerce").fillna(default)
+    for col in COMMON_BOOL_FEATURES:
+        df[col] = safe_bool_series(df.get(col, pd.Series(0)))
 
     # -----------------------------------------------------
-    # CLIMATE
+    # CLIMATE ENCODING
     # -----------------------------------------------------
-    df["climate"] = df.get("climate", "moderate").apply(encode_climate)
+    df["climate"] = encode_climate_series(df.get("climate", pd.Series(["moderate"] * len(df))))
 
     # -----------------------------------------------------
-    # SAFE DIVISION FIX (IMPORTANT)
+    # SAFE DIVISION FIX
     # -----------------------------------------------------
     df["bedrooms_safe"] = df["bedrooms"].replace(0, 1)
-    df["num_people_safe"] = df["num_people"].replace(0, 1)
+    df["people_safe"] = df["num_people"].replace(0, 1)
 
     df["people_per_room"] = df["num_people"] / df["bedrooms_safe"]
-    df["children_ratio"] = df["num_children"] / df["num_people_safe"]
+    df["children_ratio"] = df["num_children"] / df["people_safe"]
 
     # -----------------------------------------------------
-    # TRANSFORMATIONS
+    # CORE AGGREGATES (STABLE FEATURES)
     # -----------------------------------------------------
-    df["vacation_factor"] = np.log1p(df["vacation_days"])
-
-    appliance_cols = [
-        "has_ac",
-        "has_geyser",
-        "has_iron",
-        "has_washing_machine",
-        "has_dishwasher",
-        "has_induction",
-        "has_microwave",
-        "has_kettle",
-        "has_vacuum",
-        "has_room_heater",
-    ]
-
-    df["appliance_score"] = df[appliance_cols].sum(axis=1)
+    df["appliance_score"] = df[COMMON_BOOL_FEATURES].sum(axis=1)
 
     df["luxury_score"] = df["has_pool"] + df["has_garden"]
 
-    df["area_per_person"] = df["home_area"] / df["num_people_safe"]
+    df["vacation_log"] = np.log1p(df["vacation_days"])
+
+    df["area_per_person"] = df["home_area"] / df["people_safe"]
 
     # -----------------------------------------------------
-    # INTERACTIONS
-    # -----------------------------------------------------
-    df["density_x_appliance"] = df["people_per_room"] * df["appliance_score"]
-
-    df["area_x_appliance"] = df["area_per_person"] * df["appliance_score"]
-
-    df["climate_x_appliance"] = df["climate"] * df["appliance_score"]
-
-    # -----------------------------------------------------
-    # RISK SCORE
+    # RISK SCORE (SIMPLIFIED + STABLE)
     # -----------------------------------------------------
     df["consumption_risk"] = (
         df["appliance_score"]
@@ -155,9 +130,9 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     df = add_month_features(df)
 
     # -----------------------------------------------------
-    # FINAL CLEANUP (CRITICAL FIX)
+    # SAFE FINAL CLEANUP
     # -----------------------------------------------------
-    df.replace([np.inf, -np.inf], 0, inplace=True)
-    df.fillna(0, inplace=True)
+    df = df.replace([np.inf, -np.inf], 0)
+    df = df.fillna(0)
 
     return df
