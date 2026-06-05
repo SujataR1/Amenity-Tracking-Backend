@@ -47,7 +47,7 @@ from Machine_Learning.constants import (
 # =========================================================
 # RESOURCE
 # =========================================================
-RESOURCE = "electricity"   
+RESOURCE = "gas"   
 
 CONFIG = get_resource_config(
     RESOURCE

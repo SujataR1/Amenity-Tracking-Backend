@@ -260,17 +260,11 @@ def predict_consumption(
 if __name__ == "__main__":
 
     sample = {
-
-        "num_people": 5,
-
-        "bedrooms": 3,
-
+        "num_people": 8,
+        "bedrooms": 5,
         "has_ac": True,
-
-        "vacation_days": 2,
-
+        "vacation_days": 0,
         "month": "June",
-
         "climate": "hot",
     }
 

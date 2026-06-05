@@ -28,7 +28,7 @@ DATASET_DIRECTORY = os.path.join(
 
 
 # =========================================================
-# SUPPORTED
+# SUPPORTED RESOURCE TYPES
 # =========================================================
 SUPPORTED_RESOURCE_TYPES = [
     "electricity",
@@ -43,6 +43,9 @@ SUPPORTED_RESOURCE_TYPES = [
 # =========================================================
 RESOURCE_CONFIG = {
 
+    # -----------------------------------------------------
+    # ELECTRICITY
+    # -----------------------------------------------------
     "electricity": {
         "enabled": True,
         "target_column": "electricity_consumption",
@@ -51,6 +54,9 @@ RESOURCE_CONFIG = {
         "features": f"electricity_features_{MODEL_VERSION}.json",
     },
 
+    # -----------------------------------------------------
+    # WATER
+    # -----------------------------------------------------
     "water": {
         "enabled": True,
         "target_column": "total_liters",
@@ -59,14 +65,20 @@ RESOURCE_CONFIG = {
         "features": f"water_features_{MODEL_VERSION}.json",
     },
 
+    # -----------------------------------------------------
+    # GAS (ENABLED NOW)
+    # -----------------------------------------------------
     "gas": {
-        "enabled": False,
-        "target_column": "",
-        "dataset": "",
+        "enabled": True,
+        "target_column": "gas_units",
+        "dataset": "gas_6_month_usage_dataset_3000.csv",
         "model": f"gas_{MODEL_TYPE}_{MODEL_VERSION}.pkl",
         "features": f"gas_features_{MODEL_VERSION}.json",
     },
 
+    # -----------------------------------------------------
+    # FUEL
+    # -----------------------------------------------------
     "fuel": {
         "enabled": True,
         "target_column": "total_fuel_liters",
@@ -86,19 +98,40 @@ def get_resource_config(resource_type):
 
     if resource not in RESOURCE_CONFIG:
         raise ValueError(
-            f"Unsupported resource: {resource}"
+            f"Unsupported resource: {resource}. "
+            f"Supported: {SUPPORTED_RESOURCE_TYPES}"
         )
 
     cfg = RESOURCE_CONFIG[resource]
 
-    if not cfg["enabled"]:
+    if not cfg.get("enabled", False):
         raise ValueError(
-            f"{resource} training disabled "
-            f"(dataset/target not prepared)"
+            f"{resource} training disabled"
+        )
+
+    required = [
+        "target_column",
+        "dataset",
+        "model",
+        "features",
+    ]
+
+    missing = [
+        field
+        for field in required
+        if not cfg.get(field)
+    ]
+
+    if missing:
+        raise ValueError(
+            f"Incomplete RESOURCE_CONFIG "
+            f"for {resource}: {missing}"
         )
 
     return {
-        "resource": resource,
+
+        "resource":
+            resource,
 
         "target_column":
             cfg["target_column"],
@@ -127,18 +160,42 @@ def get_resource_config(resource_type):
 # TRAIN CONFIG
 # =========================================================
 XGBOOST_PARAMS = {
-    "objective": "reg:squarederror",
-    "n_estimators": 600,
-    "learning_rate": 0.03,
-    "max_depth": 5,
-    "min_child_weight": 3,
-    "gamma": 0.1,
-    "reg_alpha": 0.1,
-    "reg_lambda": 1.5,
-    "subsample": 0.8,
-    "colsample_bytree": 0.8,
-    "random_state": RANDOM_STATE,
-    "n_jobs": -1,
+
+    "objective":
+        "reg:squarederror",
+
+    "n_estimators":
+        600,
+
+    "learning_rate":
+        0.03,
+
+    "max_depth":
+        5,
+
+    "min_child_weight":
+        3,
+
+    "gamma":
+        0.1,
+
+    "reg_alpha":
+        0.1,
+
+    "reg_lambda":
+        1.5,
+
+    "subsample":
+        0.8,
+
+    "colsample_bytree":
+        0.8,
+
+    "random_state":
+        RANDOM_STATE,
+
+    "n_jobs":
+        -1,
 }
 
 
@@ -146,9 +203,13 @@ XGBOOST_PARAMS = {
 # DEFAULTS
 # =========================================================
 DEFAULT_VALUES = {
+
     "billing_days": 30,
+
     "month": 1,
+
     "year": 2026,
+
     "climate": "moderate",
 }
 
@@ -184,10 +245,15 @@ BILL_RULES = {
 # THRESHOLDS
 # =========================================================
 USAGE_THRESHOLDS = {
+
     "low": 200,
+
     "moderate": 500,
 }
 
 
+# =========================================================
+# LOGGING
+# =========================================================
 ENABLE_TRAINING_LOGS = True
 ENABLE_PREDICTION_LOGS = True
